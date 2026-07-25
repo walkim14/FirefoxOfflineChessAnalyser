@@ -18,7 +18,12 @@ A local-first Firefox extension that opens its own analysis page (no chess.com o
 
 - `manifest.json`: MV3 extension config, CSP for WebAssembly, COOP/COEP for cross-origin isolation.
 - `background/background.js`: opens `app/analyzer.html` on toolbar click.
-- `app/main.js`: board UI, PGN/FEN handling, move tree line editing, analysis orchestration.
+- `app/main.js`: thin browser entrypoint/orchestrator that bootstraps the analyzer app.
+- `app/core/analyzer-app.mjs`: application composition root and orchestration flow.
+- `app/core/constants.mjs`: defaults and shared constants.
+- `app/core/browser-storage.mjs`: async wrappers for `chrome.storage.local`.
+- `app/ui/*`: DOM refs and rendering helpers (board, tree, classification, overlays).
+- `app/state/tree-state.mjs`: move tree state transitions and line synchronization.
 - `app/stockfish-client.js`: UCI protocol wrapper over a Stockfish worker.
 - `app/move-classifier.mjs`: expected-score transform and move labels (`Book`, `Best`, `Excellent`, `Good`, `Inaccuracy`, `Mistake`, `Blunder`, plus heuristic `Great`/`Brilliant`).
 - `app/opening-book.mjs` + `app/opening-book-data.mjs`: offline ECO opening-book lookup by position and move.
