@@ -1652,13 +1652,10 @@ function renderSidelineRow(content, cellRole, laneClass, depth) {
 		return "";
 	}
 
-	const whiteContent = cellRole === "white" ? content : "";
-	const blackContent = cellRole === "black" ? content : "";
 	return `
 		<div class="tree-sideline-row ${laneClass} tree-depth-${depth}">
 			<div class="tree-move-number"></div>
-			<div class="tree-ply-cell white">${whiteContent}</div>
-			<div class="tree-ply-cell black">${blackContent}</div>
+			<div class="tree-sideline-span ${cellRole}">${content}</div>
 		</div>
 	`;
 }

@@ -859,8 +859,17 @@ textarea {
   margin-top: -0.02rem;
 }
 
-.tree-sideline-row .tree-ply-cell {
-  align-items: flex-start;
+.tree-sideline-span {
+  grid-column: 2 / 4;
+  min-width: 0;
+}
+
+.tree-sideline-span.white {
+  justify-self: start;
+}
+
+.tree-sideline-span.black {
+  justify-self: start;
 }
 
 .tree-fullmove-row.mainline {
