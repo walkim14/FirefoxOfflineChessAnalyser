@@ -448,7 +448,10 @@ button.danger {
 }
 
 .help-bubble {
-  display: inline-grid;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   place-items: center;
   width: 1.05rem;
   height: 1.05rem;
@@ -460,6 +463,54 @@ button.danger {
   font-weight: 800;
   line-height: 1;
   cursor: help;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.help-bubble-mark {
+  display: inline-block;
+  line-height: 1;
+}
+
+.help-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.6rem);
+  transform: translateX(-50%) translateY(4px);
+  min-width: 220px;
+  max-width: 300px;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(16, 19, 24, 0.98);
+  color: #f4f7fb;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 50;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.42);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+}
+
+.help-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border-width: 7px 7px 0 7px;
+  border-style: solid;
+  border-color: rgba(16, 19, 24, 0.98) transparent transparent transparent;
+}
+
+.help-bubble:hover .help-tooltip,
+.help-bubble:focus-within .help-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
 }
 
 .overview-row .help-bubble {
