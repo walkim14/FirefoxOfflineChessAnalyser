@@ -148,6 +148,23 @@
       </section>
     </main>
 
+    <div id="annotation-modal" class="annotation-modal hidden" aria-hidden="true">
+      <div class="annotation-dialog" role="dialog" aria-modal="true" aria-labelledby="annotation-dialog-title">
+        <div class="annotation-dialog-head">
+          <h3 id="annotation-dialog-title">Sideline</h3>
+          <button id="annotation-cancel-btn" type="button" class="annotation-close" aria-label="Close annotation dialog">×</button>
+        </div>
+        <label for="annotation-label-input">Label</label>
+        <input id="annotation-label-input" type="text" placeholder="e.g. novelty, prep, tactical" />
+        <label for="annotation-note-input">Note</label>
+        <textarea id="annotation-note-input" rows="5" placeholder="Write a note for this sideline..."></textarea>
+        <div class="annotation-actions">
+          <button id="annotation-clear-btn" type="button" class="ghost">Clear</button>
+          <button id="annotation-save-btn" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="./main.js"></script>
   </body>
 </html>

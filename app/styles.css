@@ -586,27 +586,6 @@ button.danger {
   gap: 0.18rem;
 }
 
-.tree-branch-block.depth-1,
-.tree-side-block.depth-1 {
-  font-size: 1.22rem;
-  font-weight: 900;
-  border-radius: 9px;
-  padding: 0.18rem 0.46rem;
-}
-
-.tree-side-block.depth-2 {
-  color: #0e1115;
-  background: linear-gradient(160deg, #fff6bf, #f1cf63);
-  border: 1px solid rgba(120, 88, 0, 0.22);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
-}
-
-.tree-branch-block.depth-3,
-.tree-side-block.depth-3 {
-  padding-left: 1.5rem;
-}
-
 .tree-side-block {
   display: grid;
   gap: 0.28rem;
@@ -614,8 +593,9 @@ button.danger {
 }
 
 .tree-ply-toggle-stack {
-  display: flex;
-  align-items: center;
+  display: grid;
+  align-items: start;
+  gap: 0.2rem;
   margin-left: 0.1rem;
 }
 
@@ -634,6 +614,69 @@ button.danger {
 
 .tree-ply-cell .tree-chip.black {
   margin-left: 0.06rem;
+}
+
+.annotation-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1000;
+  background: rgba(12, 14, 18, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.annotation-modal.hidden {
+  display: none;
+}
+
+.annotation-dialog {
+  width: min(94vw, 480px);
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background: linear-gradient(160deg, rgba(70, 74, 82, 0.98), rgba(50, 53, 60, 0.98));
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  display: grid;
+  gap: 0.42rem;
+}
+
+.annotation-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.1rem;
+}
+
+.annotation-dialog-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #f3f6fa;
+}
+
+.annotation-close {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(60, 65, 74, 0.92);
+  color: #edf2f7;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.annotation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin-top: 0.2rem;
+}
+
+button.ghost {
+  background: rgba(52, 58, 68, 0.9);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 @keyframes progressGlow {

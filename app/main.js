@@ -76,6 +76,7 @@ const state = {
 	reviewPlaybackToken: 0,
 	reviewAnimating: false,
 	treeExpandedParents: new Set(),
+	annotationDialogNodeId: null,
 };
 
 const refs = {
@@ -121,6 +122,13 @@ const refs = {
 	scanProgressLabel: document.getElementById("scan-progress-label"),
 	scrubberLabel: document.getElementById("scrubber-label"),
 	timelineScrubber: document.getElementById("timeline-scrubber"),
+	annotationModal: document.getElementById("annotation-modal"),
+	annotationDialogTitle: document.getElementById("annotation-dialog-title"),
+	annotationLabelInput: document.getElementById("annotation-label-input"),
+	annotationNoteInput: document.getElementById("annotation-note-input"),
+	annotationSaveBtn: document.getElementById("annotation-save-btn"),
+	annotationClearBtn: document.getElementById("annotation-clear-btn"),
+	annotationCancelBtn: document.getElementById("annotation-cancel-btn"),
 };
 
 const engine = new StockfishClient({ debugLabel: "ui", debug: true });
@@ -310,7 +318,7 @@ function renderMoveTreePanel() {
 				return;
 			}
 
-			promptTreeAnnotation(nodeId);
+			openTreeAnnotationDialog(nodeId);
 		});
 	});
 
@@ -717,6 +725,12 @@ async function goNext() {
 
 function onGlobalKeyDown(event) {
 	if (event.defaultPrevented) {
+		return;
+	}
+
+	if (event.key === "Escape" && refs.annotationModal && !refs.annotationModal.classList.contains("hidden")) {
+		event.preventDefault();
+		closeTreeAnnotationDialog();
 		return;
 	}
 
@@ -1171,24 +1185,66 @@ function setTreeAnnotation(nodeId, label, note) {
 	render();
 }
 
-function promptTreeAnnotation(nodeId) {
+function closeTreeAnnotationDialog() {
+	state.annotationDialogNodeId = null;
+	if (!refs.annotationModal) {
+		return;
+	}
+
+	refs.annotationModal.classList.add("hidden");
+	refs.annotationModal.setAttribute("aria-hidden", "true");
+}
+
+function openTreeAnnotationDialog(nodeId) {
 	const node = getTreeNode(nodeId);
-	if (!node) {
+	if (!node || !refs.annotationModal) {
 		return;
 	}
 
-	const title = node.moveUci ? `Sideline ${node.moveUci}` : "Sideline";
-	const label = window.prompt(`${title} label:`, node.annotationLabel || "");
-	if (label === null) {
+	state.annotationDialogNodeId = nodeId;
+	if (refs.annotationDialogTitle) {
+		refs.annotationDialogTitle.textContent = node.moveUci ? `Sideline ${node.moveUci}` : "Sideline";
+	}
+	if (refs.annotationLabelInput) {
+		refs.annotationLabelInput.value = node.annotationLabel || "";
+	}
+	if (refs.annotationNoteInput) {
+		refs.annotationNoteInput.value = node.annotationNote || "";
+	}
+
+	refs.annotationModal.classList.remove("hidden");
+	refs.annotationModal.setAttribute("aria-hidden", "false");
+	if (refs.annotationLabelInput) {
+		refs.annotationLabelInput.focus();
+	}
+}
+
+function saveTreeAnnotationDialog() {
+	const nodeId = state.annotationDialogNodeId;
+	if (!nodeId) {
 		return;
 	}
 
-	const note = window.prompt(`${title} note:`, node.annotationNote || "");
-	if (note === null) {
+	const label = refs.annotationLabelInput ? refs.annotationLabelInput.value.trim() : "";
+	const note = refs.annotationNoteInput ? refs.annotationNoteInput.value.trim() : "";
+	closeTreeAnnotationDialog();
+	setTreeAnnotation(nodeId, label, note);
+}
+
+function clearTreeAnnotationDialog() {
+	const nodeId = state.annotationDialogNodeId;
+	if (!nodeId) {
 		return;
 	}
 
-	setTreeAnnotation(nodeId, label.trim(), note.trim());
+	if (refs.annotationLabelInput) {
+		refs.annotationLabelInput.value = "";
+	}
+	if (refs.annotationNoteInput) {
+		refs.annotationNoteInput.value = "";
+	}
+	closeTreeAnnotationDialog();
+	setTreeAnnotation(nodeId, "", "");
 }
 
 function getScanProfile() {
@@ -1593,7 +1649,8 @@ function renderNodeCell(node, nodePly, mainChildId, laneClass, depth, cellRole) 
 }
 
 function renderLineBlock(startNodeId, startPly, laneClass, depth = 0, pathNodeIds = null) {
-	const resolvedPathNodeIds = (pathNodeIds || getPreferredPathNodeIds(startNodeId)).slice(1);
+	const preferredPathNodeIds = pathNodeIds || getPreferredPathNodeIds(startNodeId);
+	const resolvedPathNodeIds = startNodeId === state.treeRootId ? preferredPathNodeIds.slice(1) : preferredPathNodeIds;
 	if (!resolvedPathNodeIds.length) {
 		return "";
 	}
@@ -1971,6 +2028,22 @@ function bindEvents() {
 	if (refs.timelineScrubber) {
 		refs.timelineScrubber.addEventListener("input", () => {
 			seekToPly(refs.timelineScrubber.value);
+		});
+	}
+	if (refs.annotationSaveBtn) {
+		refs.annotationSaveBtn.addEventListener("click", saveTreeAnnotationDialog);
+	}
+	if (refs.annotationClearBtn) {
+		refs.annotationClearBtn.addEventListener("click", clearTreeAnnotationDialog);
+	}
+	if (refs.annotationCancelBtn) {
+		refs.annotationCancelBtn.addEventListener("click", closeTreeAnnotationDialog);
+	}
+	if (refs.annotationModal) {
+		refs.annotationModal.addEventListener("click", (event) => {
+			if (event.target === refs.annotationModal) {
+				closeTreeAnnotationDialog();
+			}
 		});
 	}
 	refs.toggleSideBtn.addEventListener("click", () => {
