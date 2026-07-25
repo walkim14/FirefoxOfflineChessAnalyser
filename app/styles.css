@@ -174,12 +174,6 @@ body {
   pointer-events: none;
 }
 
-.eval-bar.ep-mode .eval-label {
-  transform: translate(-50%, -50%);
-  font-size: 0.56rem;
-  letter-spacing: 0.01em;
-}
-
 .eval-bar.ep-mode .eval-white {
   background: linear-gradient(180deg, #dbeafe, #f8fbff);
 }

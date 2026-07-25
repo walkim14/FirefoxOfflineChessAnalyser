@@ -328,7 +328,7 @@ function renderEvalBar() {
 	if (mode === "ep") {
 		const whiteEp = whiteHeight / 100;
 		const blackEp = 1 - whiteEp;
-		refs.evalLabel.textContent = `EP ${whiteEp.toFixed(2)}`;
+		refs.evalLabel.textContent = `${(whiteEp * 100).toFixed(1)}%`;
 		refs.evalLabel.title = `White EP ${whiteEp.toFixed(2)} | Black EP ${blackEp.toFixed(2)}`;
 		return;
 	}
