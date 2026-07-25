@@ -722,6 +722,42 @@ button.ghost {
   font-size: 1rem;
 }
 
+.card-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.card-toggle h2 {
+  margin: 0;
+}
+
+.card-toggle-icon {
+  font-size: 0.95rem;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.collapsible-card.collapsed .card-toggle-icon {
+  transform: rotate(-90deg);
+}
+
+.card-section-content {
+  margin-top: 0.45rem;
+}
+
+.collapsible-card.collapsed .card-section-content {
+  display: none;
+}
+
 label {
   display: block;
   margin-top: 0.35rem;

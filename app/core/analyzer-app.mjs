@@ -37,6 +37,7 @@ import {
 import { getDomRefs } from "../ui/dom-refs.mjs";
 import { storageGet, storageSet } from "./browser-storage.mjs";
 import { getReferenceMainlineNodeIds, renderLineBlock } from "../ui/tree-renderer.mjs";
+import { initCollapsiblePanels } from "../ui/collapsible-panels.mjs";
 import { createAnalysisController } from "./controllers/analysis-controller.mjs";
 import { createGameplayController } from "./controllers/gameplay-controller.mjs";
 
@@ -978,6 +979,7 @@ function resetLine() {
 }
 
 function bindEvents() {
+	initCollapsiblePanels();
 	refs.loadPgnBtn.addEventListener("click", loadPgnFromInput);
 	refs.loadFenBtn.addEventListener("click", loadFenFromInput);
 	refs.applySettingsBtn.addEventListener("click", applyEngineSettings);
