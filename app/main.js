@@ -1643,9 +1643,24 @@ function renderNodeCell(node, nodePly, mainChildId, laneClass, depth, cellRole) 
 	}
 
 	const chip = `<button type="button" class="${classes.join(" ")}" data-node-id="${node.id}" data-tree-action="jump-node"${noteTitle}>${escapeHtml(node.moveUci)}${labelBadge}</button>`;
-	const toggle = renderSidelineBody(node, nodePly, mainChildId, laneClass, depth);
 
-	return `<div class="tree-ply-cell ${cellRole}">${chip}${toggle ? `<div class="tree-ply-toggle-stack">${toggle}</div>` : ""}</div>`;
+	return `<div class="tree-ply-cell ${cellRole}">${chip}</div>`;
+}
+
+function renderSidelineRow(content, cellRole, laneClass, depth) {
+	if (!content) {
+		return "";
+	}
+
+	const whiteContent = cellRole === "white" ? content : "";
+	const blackContent = cellRole === "black" ? content : "";
+	return `
+		<div class="tree-sideline-row ${laneClass} tree-depth-${depth}">
+			<div class="tree-move-number"></div>
+			<div class="tree-ply-cell white">${whiteContent}</div>
+			<div class="tree-ply-cell black">${blackContent}</div>
+		</div>
+	`;
 }
 
 function renderLineBlock(startNodeId, startPly, laneClass, depth = 0, pathNodeIds = null) {
@@ -1686,12 +1701,17 @@ function renderLineBlock(startNodeId, startPly, laneClass, depth = 0, pathNodeId
 			blackMainChildId = nextNode ? nextNode.id : (currentNode.preferredChildId || currentNode.children[0] || null);
 		}
 
+		const whiteSideline = whiteNode ? renderSidelineBody(whiteNode, whitePly, whiteMainChildId, laneClass, depth) : "";
+		const blackSideline = blackNode ? renderSidelineBody(blackNode, blackPly, blackMainChildId, laneClass, depth) : "";
+
 		html += `
 			<div class="tree-fullmove-row ${laneClass} tree-depth-${depth}">
 				<div class="tree-move-number">${escapeHtml(rowLabel)}</div>
 				${renderNodeCell(whiteNode, whitePly, whiteMainChildId, laneClass, depth, "white")}
 				${renderNodeCell(blackNode, blackPly, blackMainChildId, laneClass, depth, "black")}
 			</div>
+			${renderSidelineRow(whiteSideline, "white", laneClass, depth)}
+			${renderSidelineRow(blackSideline, "black", laneClass, depth)}
 		`;
 
 		if (ply % 2 === 1 && nextNode) {

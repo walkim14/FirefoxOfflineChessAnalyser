@@ -851,6 +851,18 @@ textarea {
   align-items: center;
 }
 
+.tree-sideline-row {
+  display: grid;
+  grid-template-columns: 2.05rem minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.34rem;
+  align-items: start;
+  margin-top: -0.02rem;
+}
+
+.tree-sideline-row .tree-ply-cell {
+  align-items: flex-start;
+}
+
 .tree-fullmove-row.mainline {
   --tree-row-accent: rgba(122, 203, 126, 0.95);
 }
@@ -1028,7 +1040,7 @@ textarea {
   justify-content: flex-start;
   align-items: center;
   gap: 0.25rem;
-  padding-left: 0.52rem;
+  padding-left: 0.1rem;
   margin: 0.08rem 0 0.14rem;
 }
 
