@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Offline Chess Analyzer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape shape-a"></div>
+    <div class="bg-shape shape-b"></div>
+
+    <main class="layout">
+      <section class="board-panel">
+        <header class="board-header">
+          <h1>Offline Chess Analyzer</h1>
+          <p>Local PGN analysis with Stockfish WASM and live what-if moves.</p>
+        </header>
+
+        <div class="board-frame">
+          <div id="eval-bar" class="eval-bar" aria-label="Evaluation bar">
+            <div id="eval-black" class="eval-black"></div>
+            <div id="eval-white" class="eval-white"></div>
+            <div id="eval-label" class="eval-label">=</div>
+          </div>
+          <div class="board-wrap">
+            <div id="player-top" class="player-strip">Black -</div>
+            <div id="board" class="board" aria-label="Chess board"></div>
+            <svg id="board-overlay" class="board-overlay" viewBox="0 0 800 800" aria-hidden="true"></svg>
+            <div id="player-bottom" class="player-strip">White -</div>
+          </div>
+        </div>
+
+        <div class="controls-row">
+          <button id="prev-btn" type="button">Prev</button>
+          <button id="next-btn" type="button">Next</button>
+          <button id="flip-btn" type="button">Flip</button>
+          <label class="review-toggle" for="review-mode-toggle">
+            <input id="review-mode-toggle" type="checkbox" />
+            <span>Review Mode</span>
+          </label>
+          <button id="reset-btn" type="button" class="danger">Reset Line</button>
+        </div>
+
+        <div id="scan-progress-wrap" class="scan-progress hidden" aria-live="polite">
+          <div class="scrub-head">
+            <div id="scan-progress-label" class="scan-progress-label"></div>
+            <div id="scrubber-label" class="scrubber-label">Move 0 / 0</div>
+          </div>
+          <div class="scrubber-shell">
+            <div class="scan-progress-track">
+              <div id="scan-progress-bar" class="scan-progress-bar"></div>
+            </div>
+            <input id="timeline-scrubber" class="timeline-scrubber" type="range" min="0" max="0" value="0" step="1" aria-label="Game timeline scrubber" />
+          </div>
+        </div>
+
+        <div id="status" class="status">Engine booting...</div>
+      </section>
+
+      <section id="side-panel" class="side-panel">
+        <div class="side-toolbar">
+          <button id="toggle-side-btn" type="button">Hide Controls</button>
+        </div>
+
+        <div class="card control-card">
+          <h2>Import</h2>
+          <label for="pgn-input">PGN</label>
+          <textarea id="pgn-input" rows="8" placeholder="Paste PGN here"></textarea>
+          <button id="load-pgn-btn" type="button">Load PGN</button>
+
+          <label for="fen-input">Start FEN</label>
+          <input id="fen-input" type="text" placeholder="Optional custom FEN" />
+          <button id="load-fen-btn" type="button">Load FEN</button>
+        </div>
+
+        <div class="card control-card">
+          <h2>Theme</h2>
+          <div class="settings-grid">
+            <label for="board-style-select">Board</label>
+            <select id="board-style-select">
+              <option value="brown">Brown</option>
+              <option value="green">Green</option>
+              <option value="blue">Blue</option>
+              <option value="marble">Marble</option>
+              <option value="walnut">Walnut</option>
+            </select>
+
+            <label for="piece-style-select">Pieces</label>
+            <select id="piece-style-select">
+              <option value="neo">Neo</option>
+              <option value="classic">Classic</option>
+              <option value="wood">Wood</option>
+              <option value="3d_wood">3D Wood</option>
+              <option value="tournament">Tournament</option>
+            </select>
+          </div>
+          <button id="apply-theme-btn" type="button">Apply Theme</button>
+        </div>
+
+        <div class="card control-card">
+          <h2>Analysis</h2>
+          <div class="settings-grid">
+            <label for="depth-input">Depth</label>
+            <input id="depth-input" type="number" min="12" max="30" step="1" value="22" />
+
+            <label for="multipv-input">MultiPV</label>
+            <input id="multipv-input" type="number" min="1" max="4" step="1" value="3" />
+
+            <label for="hash-input">Hash MB</label>
+            <input id="hash-input" type="number" min="64" max="512" step="64" value="128" />
+
+            <label for="elo-input">Player Elo</label>
+            <input id="elo-input" type="number" min="400" max="3000" step="50" value="1600" />
+          </div>
+          <button id="apply-settings-btn" type="button">Apply Engine Settings</button>
+          <button id="analyze-btn" type="button">Analyze Current Position</button>
+        </div>
+
+        <div class="card">
+          <h2>Move Classification</h2>
+          <p id="classification-pill" class="pill neutral">No move classified yet</p>
+          <div id="classification-meta" class="meta-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Game Overview</h2>
+          <div id="overview-white" class="line-item">White: -</div>
+          <div id="overview-black" class="line-item">Black: -</div>
+          <div id="overview-breakdown" class="meta-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Move Tree</h2>
+          <div id="tree-path" class="tree-path"></div>
+          <div id="tree-children" class="tree-children"></div>
+          <div class="tree-annotation-panel">
+            <div class="tree-annotation-head">
+              <div>
+                <div class="tree-annotation-title">Sideline Notes</div>
+                <div id="tree-annotation-subtitle" class="tree-annotation-subtitle">Select a move to annotate it.</div>
+              </div>
+              <button id="tree-annotation-clear-btn" type="button" class="tree-annotation-clear">Clear</button>
+            </div>
+            <label for="tree-annotation-label-input">Label</label>
+            <input id="tree-annotation-label-input" type="text" placeholder="e.g. novelty, prep, tactical" />
+            <label for="tree-annotation-note-input">Notes</label>
+            <textarea id="tree-annotation-note-input" rows="4" placeholder="Write a note for this sideline..."></textarea>
+            <button id="tree-annotation-save-btn" type="button">Save Note</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Engine Lines</h2>
+          <div id="engine-lines" class="lines"></div>
+        </div>
+
+        <div class="card">
+          <h2>Move List</h2>
+          <div id="move-list" class="move-list"></div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

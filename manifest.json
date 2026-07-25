@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Offline Chess Analyzer",
+  "version": "0.1.0",
+  "description": "Local chess analysis with Stockfish WASM, PGN import, and interactive what-if lines.",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["https://www.chess.com/*", "https://api.chess.com/*"],
+  "background": {
+    "scripts": ["background/background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Offline Chess Analyzer"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "engine/*.js",
+        "engine/*.wasm",
+        "vendor/*.js",
+        "assets/boards/*.png",
+        "assets/pieces/*/*.png"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "offline-chess-analyzer@example.local"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.chess.com/games/archive*", "https://www.chess.com/games/archive/*"],
+      "js": ["content/archive-injector.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.chess.com/game/live/*", "https://www.chess.com/analysis/game/live/*"],
+      "js": ["content/game-capture.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
