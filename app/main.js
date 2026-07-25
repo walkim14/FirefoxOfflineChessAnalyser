@@ -297,7 +297,7 @@ function renderMoveTreePanel() {
 		return;
 	}
 
-	const treeHtml = renderLineBlock(referenceLineNodeIds[0], 1, "mainline", 0);
+	const treeHtml = renderLineBlock(referenceLineNodeIds[0], 1, "mainline", 0, referenceLineNodeIds);
 	refs.treePath.innerHTML = `<div class="tree-branch-panel"><div class="tree-mainline-rail" aria-hidden="true"></div><div class="tree-rows">${treeHtml}</div></div>`;
 	refs.treeChildren.innerHTML = "";
 
