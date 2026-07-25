@@ -121,11 +121,6 @@ const refs = {
 	scanProgressLabel: document.getElementById("scan-progress-label"),
 	scrubberLabel: document.getElementById("scrubber-label"),
 	timelineScrubber: document.getElementById("timeline-scrubber"),
-	treeAnnotationSubtitle: document.getElementById("tree-annotation-subtitle"),
-	treeAnnotationLabelInput: document.getElementById("tree-annotation-label-input"),
-	treeAnnotationNoteInput: document.getElementById("tree-annotation-note-input"),
-	treeAnnotationSaveBtn: document.getElementById("tree-annotation-save-btn"),
-	treeAnnotationClearBtn: document.getElementById("tree-annotation-clear-btn"),
 };
 
 const engine = new StockfishClient({ debugLabel: "ui", debug: true });
@@ -149,6 +144,8 @@ function createTreeNode({ id, fen, moveUci = null, parentId = null }) {
 		children: [],
 		preferredChildId: null,
 		classification: null,
+		annotationLabel: "",
+		annotationNote: "",
 	};
 }
 
@@ -303,6 +300,17 @@ function renderMoveTreePanel() {
 			clearSelection();
 			render();
 			schedulePositionAnalysis(80);
+		});
+	});
+
+	refs.treePath.querySelectorAll("button[data-tree-action='edit-annotation']").forEach((button) => {
+		button.addEventListener("click", () => {
+			const nodeId = Number(button.getAttribute("data-node-id"));
+			if (!nodeId) {
+				return;
+			}
+
+			promptTreeAnnotation(nodeId);
 		});
 	});
 
@@ -1152,32 +1160,35 @@ function seekToPly(ply) {
 	schedulePositionAnalysis(80);
 }
 
-function saveTreeAnnotation() {
-	const node = getTreeNode(state.currentNodeId);
+function setTreeAnnotation(nodeId, label, note) {
+	const node = getTreeNode(nodeId);
 	if (!node) {
 		return;
 	}
 
-	node.annotationLabel = refs.treeAnnotationLabelInput ? refs.treeAnnotationLabelInput.value.trim() : "";
-	node.annotationNote = refs.treeAnnotationNoteInput ? refs.treeAnnotationNoteInput.value.trim() : "";
+	node.annotationLabel = label;
+	node.annotationNote = note;
 	render();
 }
 
-function clearTreeAnnotation() {
-	const node = getTreeNode(state.currentNodeId);
+function promptTreeAnnotation(nodeId) {
+	const node = getTreeNode(nodeId);
 	if (!node) {
 		return;
 	}
 
-	node.annotationLabel = "";
-	node.annotationNote = "";
-	if (refs.treeAnnotationLabelInput) {
-		refs.treeAnnotationLabelInput.value = "";
+	const title = node.moveUci ? `Sideline ${node.moveUci}` : "Sideline";
+	const label = window.prompt(`${title} label:`, node.annotationLabel || "");
+	if (label === null) {
+		return;
 	}
-	if (refs.treeAnnotationNoteInput) {
-		refs.treeAnnotationNoteInput.value = "";
+
+	const note = window.prompt(`${title} note:`, node.annotationNote || "");
+	if (note === null) {
+		return;
 	}
-	render();
+
+	setTreeAnnotation(nodeId, label.trim(), note.trim());
 }
 
 function getScanProfile() {
@@ -1543,18 +1554,19 @@ function renderSidelineBody(node, nodePly, mainChildId, laneClass, depth) {
 
 	const expanded = state.treeExpandedParents.has(node.id);
 	const toggle = `<button type="button" class="tree-var-toggle ${expanded ? "expanded" : ""}" data-parent-node-id="${node.id}" data-tree-action="toggle-variations" aria-label="${expanded ? "Collapse" : "Expand"} variations"><span class="tree-var-arrow">${expanded ? "▾" : "▸"}</span></button>`;
+	const annotate = `<button type="button" class="tree-annotation-button" data-node-id="${node.id}" data-tree-action="edit-annotation" aria-label="Annotate sideline">✎</button>`;
 
 	if (!expanded) {
-		return `<div class="tree-variation-toggle-row depth-${depth}">${toggle}</div>`;
+		return `<div class="tree-variation-toggle-row depth-${depth}">${annotate}${toggle}</div>`;
 	}
 
 	const nested = sideChildren
-		.map((child) => renderLineBlock(child.id, nodePly + 1, laneClass, depth + 1))
+		.map((child) => renderLineBlock(child.id, nodePly + 1, "variation", depth + 1))
 		.join("");
 
 	return `
-		<div class="tree-variation-toggle-row depth-${depth}">${toggle}</div>
-		<div class="tree-side-block ${laneClass} depth-${depth}">${nested}</div>
+		<div class="tree-variation-toggle-row depth-${depth}">${annotate}${toggle}</div>
+		<div class="tree-side-block variation depth-${depth}">${nested}</div>
 	`;
 }
 
@@ -1566,7 +1578,7 @@ function renderNodeCell(node, nodePly, mainChildId, laneClass, depth, cellRole) 
 	const isCurrent = state.currentNodeId === node.id;
 	const noteTitle = node.annotationNote ? ` title="${escapeHtml(node.annotationNote)}"` : "";
 	const labelBadge = node.annotationLabel ? `<span class="tree-node-label">${escapeHtml(node.annotationLabel)}</span>` : "";
-	const classes = ["tree-chip", cellRole];
+	const classes = ["tree-chip", cellRole, laneClass === "mainline" ? "mainline" : "variation"];
 	if (isCurrent) {
 		classes.push("current");
 	}
@@ -1618,7 +1630,7 @@ function renderLineBlock(startNodeId, startPly, laneClass, depth = 0, pathNodeId
 		}
 
 		html += `
-			<div class="tree-fullmove-row tree-depth-${depth}">
+			<div class="tree-fullmove-row ${laneClass} tree-depth-${depth}">
 				<div class="tree-move-number">${escapeHtml(rowLabel)}</div>
 				${renderNodeCell(whiteNode, whitePly, whiteMainChildId, laneClass, depth, "white")}
 				${renderNodeCell(blackNode, blackPly, blackMainChildId, laneClass, depth, "black")}
@@ -1638,40 +1650,12 @@ function renderLineBlock(startNodeId, startPly, laneClass, depth = 0, pathNodeId
 	return html;
 }
 
-function renderTreeAnnotationPanel() {
-	const node = getTreeNode(state.currentNodeId);
-	if (!node) {
-		if (refs.treeAnnotationSubtitle) {
-			refs.treeAnnotationSubtitle.textContent = "Select a move to annotate it.";
-		}
-		if (refs.treeAnnotationLabelInput) {
-			refs.treeAnnotationLabelInput.value = "";
-		}
-		if (refs.treeAnnotationNoteInput) {
-			refs.treeAnnotationNoteInput.value = "";
-		}
-		return;
-	}
-
-	if (refs.treeAnnotationSubtitle) {
-		const branchType = state.mainlineNodeIds.includes(node.id) ? "mainline" : "sideline";
-		refs.treeAnnotationSubtitle.textContent = `${branchType === "sideline" ? "Sideline" : "Mainline"} move ${node.moveUci || ""}`.trim();
-	}
-	if (refs.treeAnnotationLabelInput) {
-		refs.treeAnnotationLabelInput.value = node.annotationLabel || "";
-	}
-	if (refs.treeAnnotationNoteInput) {
-		refs.treeAnnotationNoteInput.value = node.annotationNote || "";
-	}
-}
-
 function render() {
 	renderBoard();
 	renderEvalBar();
 	renderPlayers();
 	updateMoveList();
 	renderMoveTreePanel();
-	renderTreeAnnotationPanel();
 	renderTimelineScrubber();
 	renderOverview();
 	const moveIndex = state.currentPly - 1;
@@ -1988,12 +1972,6 @@ function bindEvents() {
 		refs.timelineScrubber.addEventListener("input", () => {
 			seekToPly(refs.timelineScrubber.value);
 		});
-	}
-	if (refs.treeAnnotationSaveBtn) {
-		refs.treeAnnotationSaveBtn.addEventListener("click", saveTreeAnnotation);
-	}
-	if (refs.treeAnnotationClearBtn) {
-		refs.treeAnnotationClearBtn.addEventListener("click", clearTreeAnnotation);
 	}
 	refs.toggleSideBtn.addEventListener("click", () => {
 		toggleSidebarCollapsed(!state.settings.sidebarCollapsed);
