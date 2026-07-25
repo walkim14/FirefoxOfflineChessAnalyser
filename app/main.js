@@ -43,6 +43,7 @@ const state = {
 	activeLineNodeIds: [1],
 	lineMoves: [],
 	timelineFens: [INITIAL_FEN],
+	clockTimeline: [{ white: null, black: null }],
 	currentPly: 0,
 	orientation: "white",
 	selectedSquare: null,
@@ -143,7 +144,7 @@ function delay(ms) {
 	});
 }
 
-function createTreeNode({ id, fen, moveUci = null, parentId = null }) {
+function createTreeNode({ id, fen, moveUci = null, parentId = null, clockWhite = null, clockBlack = null }) {
 	return {
 		id,
 		fen,
@@ -154,6 +155,8 @@ function createTreeNode({ id, fen, moveUci = null, parentId = null }) {
 		classification: null,
 		annotationLabel: "",
 		annotationNote: "",
+		clockWhite,
+		clockBlack,
 	};
 }
 
@@ -171,17 +174,24 @@ function resetMoveTree(startFen) {
 	state.activeLineNodeIds = [1];
 	state.lineMoves = [];
 	state.timelineFens = [startFen];
+	state.clockTimeline = [{ white: null, black: null }];
 	state.moveClassifications = [];
 	state.currentPly = 0;
 	state.treeExpandedParents = new Set();
 }
 
-function initializeMoveTreeFromLine(startFen, lineMoves) {
+function initializeMoveTreeFromLine(startFen, lineMoves, clockTimeline = null) {
 	resetMoveTree(startFen);
+	const root = getTreeNode(state.treeRootId);
+	if (root && clockTimeline?.[0]) {
+		root.clockWhite = clockTimeline[0].white || null;
+		root.clockBlack = clockTimeline[0].black || null;
+	}
 	let cursor = getTreeNode(state.treeRootId);
 	const game = new Chess(startFen);
 
-	for (const uci of lineMoves) {
+	for (let index = 0; index < lineMoves.length; index += 1) {
+		const uci = lineMoves[index];
 		const applied = game.move(uciToMoveObject(uci));
 		if (!applied) {
 			break;
@@ -194,6 +204,8 @@ function initializeMoveTreeFromLine(startFen, lineMoves) {
 			fen: game.fen(),
 			moveUci: uci,
 			parentId: cursor.id,
+			clockWhite: clockTimeline?.[index + 1]?.white || null,
+			clockBlack: clockTimeline?.[index + 1]?.black || null,
 		});
 		state.treeNodes.set(nodeId, child);
 		cursor.children.push(nodeId);
@@ -236,6 +248,13 @@ function syncLineFromTree() {
 	state.activeLineNodeIds = activeLine.nodeIds;
 	state.lineMoves = activeLine.moves;
 	state.timelineFens = activeLine.timeline;
+	state.clockTimeline = state.activeLineNodeIds.map((nodeId) => {
+		const node = getTreeNode(nodeId);
+		return {
+			white: node?.clockWhite || null,
+			black: node?.clockBlack || null,
+		};
+	});
 	state.moveClassifications = state.activeLineNodeIds
 		.slice(1)
 		.map((nodeId) => getTreeNode(nodeId)?.classification || null);
@@ -472,12 +491,13 @@ function squareDisplayIndex(square) {
 	};
 }
 
-function formatPlayerLine(name, elo) {
+function formatPlayerLine(name, elo, clock) {
 	const safeName = name || "Player";
+	const clockPart = clock ? ` | ${clock}` : "";
 	if (!elo) {
-		return safeName;
+		return `${safeName}${clockPart}`;
 	}
-	return `${safeName} (${elo})`;
+	return `${safeName} (${elo})${clockPart}`;
 }
 
 function renderPlayers() {
@@ -485,8 +505,11 @@ function renderPlayers() {
 		return;
 	}
 
-	const whiteText = formatPlayerLine(state.players.whiteName, state.players.whiteElo);
-	const blackText = formatPlayerLine(state.players.blackName, state.players.blackElo);
+	const currentNode = getTreeNode(state.currentNodeId);
+	const whiteClock = currentNode?.clockWhite || null;
+	const blackClock = currentNode?.clockBlack || null;
+	const whiteText = formatPlayerLine(state.players.whiteName, state.players.whiteElo, whiteClock);
+	const blackText = formatPlayerLine(state.players.blackName, state.players.blackElo, blackClock);
 
 	if (state.orientation === "white") {
 		refs.playerTop.textContent = blackText;
@@ -920,8 +943,10 @@ function loadPgnFromInput() {
 		return;
 	}
 
+	let parsed = null;
+
 	try {
-		const parsed = parsePgnToLine(pgn, Chess);
+		parsed = parsePgnToLine(pgn, Chess);
 		state.startFen = parsed.startFen;
 		state.lineMoves = parsed.lineMoves;
 		state.players.whiteName = parsed.headers?.White || "White";
@@ -935,6 +960,7 @@ function loadPgnFromInput() {
 		}
 		debugLog("PGN loaded", {
 			plies: parsed.lineMoves.length,
+			clockPlies: parsed.clockTimeline?.length || 0,
 			whiteElo: parsed.whiteElo,
 			blackElo: parsed.blackElo,
 			suggestedElo: parsed.suggestedElo,
@@ -944,7 +970,7 @@ function loadPgnFromInput() {
 		return;
 	}
 
-	initializeMoveTreeFromLine(state.startFen, state.lineMoves);
+	initializeMoveTreeFromLine(state.startFen, state.lineMoves, parsed?.clockTimeline || null);
 	state.currentNodeId = state.treeRootId;
 	state.mainlineNodeIds = state.activeLineNodeIds.slice();
 	buildTimelineFromLine();
@@ -1768,6 +1794,13 @@ async function playMoveAtCurrentPly(uci) {
 
 	const afterFen = beforeGame.fen();
 	let nextNode = null;
+	let nextClockWhite = currentNode.clockWhite || null;
+	let nextClockBlack = currentNode.clockBlack || null;
+	if (moverColor === "w") {
+		nextClockWhite = null;
+	} else {
+		nextClockBlack = null;
+	}
 	for (const childId of currentNode.children) {
 		const child = getTreeNode(childId);
 		if (child && child.moveUci === uci && child.fen === afterFen) {
@@ -1784,6 +1817,8 @@ async function playMoveAtCurrentPly(uci) {
 			fen: afterFen,
 			moveUci: uci,
 			parentId: currentNode.id,
+			clockWhite: nextClockWhite,
+			clockBlack: nextClockBlack,
 		});
 		state.treeNodes.set(nodeId, nextNode);
 		currentNode.children.push(nodeId);
