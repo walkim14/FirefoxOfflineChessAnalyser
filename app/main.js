@@ -3,35 +3,16 @@ import { StockfishClient } from "./stockfish-client.js";
 import { classifyMove, expectedWhitePercent } from "./move-classifier.mjs";
 import { parsePgnToLine } from "./pgn-loader.mjs";
 import { analyzeWithFallback } from "./analysis-fallback.mjs";
-
-const DEFAULT_SETTINGS = {
-	depth: 22,
-	multiPV: 3,
-	hashMb: 128,
-	playerElo: 1600,
-	boardStyle: "brown",
-	pieceStyle: "neo",
-	sidebarCollapsed: false,
-	reviewMode: false,
-};
-
-const CLASS_ICONS = {
-	book: "Bk",
-	best: "★",
-	excellent: "✓",
-	good: "+",
-	inaccuracy: "?!",
-	mistake: "?",
-	blunder: "??",
-	great: "!",
-	brilliant: "‼",
-	miss: "⨯",
-};
-
-const SCAN_PLAYBACK_DELAY_MS = 120;
-const REVIEW_PLAYBACK_DELAY_MS = 170;
-
-const INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+import {
+	CLASS_ICONS,
+	DEFAULT_SETTINGS,
+	INITIAL_FEN,
+	REVIEW_PLAYBACK_DELAY_MS,
+	SCAN_PLAYBACK_DELAY_MS,
+} from "./constants.mjs";
+import { getDomRefs } from "./dom-refs.mjs";
+import { storageGet, storageSet } from "./browser-storage.mjs";
+import { getReferenceMainlineNodeIds, renderLineBlock } from "./tree-renderer.mjs";
 
 const state = {
 	startFen: INITIAL_FEN,
@@ -80,57 +61,7 @@ const state = {
 	annotationDialogNodeId: null,
 };
 
-const refs = {
-	board: document.getElementById("board"),
-	status: document.getElementById("status"),
-	pgnInput: document.getElementById("pgn-input"),
-	fenInput: document.getElementById("fen-input"),
-	loadPgnBtn: document.getElementById("load-pgn-btn"),
-	loadFenBtn: document.getElementById("load-fen-btn"),
-	prevBtn: document.getElementById("prev-btn"),
-	nextBtn: document.getElementById("next-btn"),
-	flipBtn: document.getElementById("flip-btn"),
-	resetBtn: document.getElementById("reset-btn"),
-	depthInput: document.getElementById("depth-input"),
-	multipvInput: document.getElementById("multipv-input"),
-	hashInput: document.getElementById("hash-input"),
-	eloInput: document.getElementById("elo-input"),
-	applySettingsBtn: document.getElementById("apply-settings-btn"),
-	analyzeBtn: document.getElementById("analyze-btn"),
-	boardStyleSelect: document.getElementById("board-style-select"),
-	pieceStyleSelect: document.getElementById("piece-style-select"),
-	applyThemeBtn: document.getElementById("apply-theme-btn"),
-	toggleSideBtn: document.getElementById("toggle-side-btn"),
-	reviewModeToggle: document.getElementById("review-mode-toggle"),
-	sidePanel: document.getElementById("side-panel"),
-	classificationPill: document.getElementById("classification-pill"),
-	classificationMeta: document.getElementById("classification-meta"),
-	overviewWhite: document.getElementById("overview-white"),
-	overviewBlack: document.getElementById("overview-black"),
-	overviewBreakdown: document.getElementById("overview-breakdown"),
-	treePath: document.getElementById("tree-path"),
-	treeChildren: document.getElementById("tree-children"),
-	engineLines: document.getElementById("engine-lines"),
-	moveList: document.getElementById("move-list"),
-	boardOverlay: document.getElementById("board-overlay"),
-	evalBlack: document.getElementById("eval-black"),
-	evalWhite: document.getElementById("eval-white"),
-	evalLabel: document.getElementById("eval-label"),
-	playerTop: document.getElementById("player-top"),
-	playerBottom: document.getElementById("player-bottom"),
-	scanProgressWrap: document.getElementById("scan-progress-wrap"),
-	scanProgressBar: document.getElementById("scan-progress-bar"),
-	scanProgressLabel: document.getElementById("scan-progress-label"),
-	scrubberLabel: document.getElementById("scrubber-label"),
-	timelineScrubber: document.getElementById("timeline-scrubber"),
-	annotationModal: document.getElementById("annotation-modal"),
-	annotationDialogTitle: document.getElementById("annotation-dialog-title"),
-	annotationLabelInput: document.getElementById("annotation-label-input"),
-	annotationNoteInput: document.getElementById("annotation-note-input"),
-	annotationSaveBtn: document.getElementById("annotation-save-btn"),
-	annotationClearBtn: document.getElementById("annotation-clear-btn"),
-	annotationCancelBtn: document.getElementById("annotation-cancel-btn"),
-};
+const refs = getDomRefs();
 
 const engine = new StockfishClient({ debugLabel: "ui", debug: true });
 
@@ -309,14 +240,26 @@ function renderMoveTreePanel() {
 		return;
 	}
 
-	const referenceLineNodeIds = state.mainlineNodeIds.length > 0 ? state.mainlineNodeIds : getReferenceMainlineNodeIds();
+	const referenceLineNodeIds = state.mainlineNodeIds.length > 0
+		? state.mainlineNodeIds
+		: getReferenceMainlineNodeIds(state.treeRootId, getTreeNode);
 	if (referenceLineNodeIds.length <= 1) {
 		refs.treePath.innerHTML = "<div class='line-item'>No moves in tree yet.</div>";
 		refs.treeChildren.innerHTML = "";
 		return;
 	}
 
-	const treeHtml = renderLineBlock(referenceLineNodeIds[0], 1, "mainline", 0, referenceLineNodeIds);
+	const treeHtml = renderLineBlock({
+		startNodeId: referenceLineNodeIds[0],
+		startPly: 1,
+		laneClass: "mainline",
+		depth: 0,
+		pathNodeIds: referenceLineNodeIds,
+		getTreeNode,
+		treeExpandedParents: state.treeExpandedParents,
+		currentNodeId: state.currentNodeId,
+		rootNodeId: state.treeRootId,
+	});
 	refs.treePath.innerHTML = `<div class="tree-branch-panel"><div class="tree-mainline-rail" aria-hidden="true"></div><div class="tree-rows">${treeHtml}</div></div>`;
 	refs.treeChildren.innerHTML = "";
 
@@ -357,37 +300,6 @@ function renderMoveTreePanel() {
 		});
 	});
 }
-
-function getReferenceMainlineNodeIds() {
-	const nodeIds = [state.treeRootId];
-	let cursor = getTreeNode(state.treeRootId);
-
-	while (cursor && cursor.children.length) {
-		const nextId = cursor.children[0];
-		const child = getTreeNode(nextId);
-		if (!child) {
-			break;
-		}
-
-		nodeIds.push(child.id);
-		cursor = child;
-	}
-
-	return nodeIds;
-}
-
-function getNodePathSet(nodeId) {
-	const ids = new Set();
-	let cursor = getTreeNode(nodeId);
-
-	while (cursor) {
-		ids.add(cursor.id);
-		cursor = cursor.parentId ? getTreeNode(cursor.parentId) : null;
-	}
-
-	return ids;
-}
-
 function uciToMoveObject(uci) {
 	if (!uci || uci.length < 4) {
 		return null;
@@ -828,48 +740,6 @@ function debugLog(message, payload) {
 	}
 
 	console.debug(`[app] ${message}`, payload);
-}
-
-function storageGet(key) {
-	return new Promise((resolve, reject) => {
-		try {
-			const maybePromise = chrome.storage.local.get(key, (value) => {
-				const err = chrome.runtime?.lastError;
-				if (err) {
-					reject(new Error(err.message));
-					return;
-				}
-				resolve(value || {});
-			});
-
-			if (maybePromise && typeof maybePromise.then === "function") {
-				maybePromise.then(resolve).catch(reject);
-			}
-		} catch (error) {
-			reject(error);
-		}
-	});
-}
-
-function storageSet(value) {
-	return new Promise((resolve, reject) => {
-		try {
-			const maybePromise = chrome.storage.local.set(value, () => {
-				const err = chrome.runtime?.lastError;
-				if (err) {
-					reject(new Error(err.message));
-					return;
-				}
-				resolve();
-			});
-
-			if (maybePromise && typeof maybePromise.then === "function") {
-				maybePromise.then(resolve).catch(reject);
-			}
-		} catch (error) {
-			reject(error);
-		}
-	});
 }
 
 async function consumePendingPgnImport() {
@@ -1592,7 +1462,7 @@ function renderBoard() {
 }
 
 function escapeHtml(value) {
-	return String(value ?? "").replace(/[&<>"]'/g, (character) => {
+	return String(value ?? "").replace(/[&<>"']/g, (character) => {
 		const replacements = {
 			"&": "&amp;",
 			"<": "&lt;",
@@ -1602,152 +1472,6 @@ function escapeHtml(value) {
 		};
 		return replacements[character] || character;
 	});
-}
-
-function getPreferredPathNodeIds(startNodeId) {
-	const nodeIds = [];
-	let cursor = getTreeNode(startNodeId);
-
-	while (cursor) {
-		nodeIds.push(cursor.id);
-		const nextId = cursor.preferredChildId || cursor.children[0];
-		if (!nextId) {
-			break;
-		}
-		cursor = getTreeNode(nextId);
-	}
-
-	return nodeIds;
-}
-
-function renderSidelineBody(node, nodePly, mainChildId, laneClass, depth) {
-	if (!node) {
-		return "";
-	}
-
-	const sideChildren = node.children
-		.filter((childId) => childId !== mainChildId)
-		.map((childId) => getTreeNode(childId))
-		.filter(Boolean);
-
-	if (!sideChildren.length) {
-		return "";
-	}
-
-	const expanded = state.treeExpandedParents.has(node.id);
-	const toggle = `<button type="button" class="tree-var-toggle ${expanded ? "expanded" : ""}" data-parent-node-id="${node.id}" data-tree-action="toggle-variations" aria-label="${expanded ? "Collapse" : "Expand"} variations"><span class="tree-var-arrow">${expanded ? "▾" : "▸"}</span></button>`;
-	const annotate = `<button type="button" class="tree-annotation-button" data-node-id="${node.id}" data-tree-action="edit-annotation" aria-label="Annotate sideline">✎</button>`;
-
-	if (!expanded) {
-		return `<div class="tree-variation-toggle-row depth-${depth}">${annotate}${toggle}</div>`;
-	}
-
-	const nested = sideChildren
-		.map((child) => renderLineBlock(child.id, nodePly + 1, "variation", depth + 1))
-		.join("");
-
-	return `
-		<div class="tree-variation-toggle-row depth-${depth}">${annotate}${toggle}</div>
-		<div class="tree-side-block variation depth-${depth}">${nested}</div>
-	`;
-}
-
-function renderNodeCell(node, nodePly, mainChildId, laneClass, depth, cellRole) {
-	if (!node) {
-		return `<div class="tree-ply-cell ${cellRole} empty"></div>`;
-	}
-
-	const isCurrent = state.currentNodeId === node.id;
-	const noteTitle = node.annotationNote ? ` title="${escapeHtml(node.annotationNote)}"` : "";
-	const labelBadge = node.annotationLabel ? `<span class="tree-node-label">${escapeHtml(node.annotationLabel)}</span>` : "";
-	const classes = ["tree-chip", cellRole, laneClass === "mainline" ? "mainline" : "variation"];
-	if (isCurrent) {
-		classes.push("current");
-	}
-	if ((getNodePathSet(state.currentNodeId) || new Set()).has(node.id)) {
-		classes.push("in-current-path");
-	}
-
-	const chip = `<button type="button" class="${classes.join(" ")}" data-node-id="${node.id}" data-tree-action="jump-node"${noteTitle}>${escapeHtml(node.moveUci)}${labelBadge}</button>`;
-
-	return `<div class="tree-ply-cell ${cellRole}">${chip}</div>`;
-}
-
-function renderSidelineRow(content, cellRole, laneClass, depth) {
-	if (!content) {
-		return "";
-	}
-
-	return `
-		<div class="tree-sideline-row ${laneClass} tree-depth-${depth}">
-			<div class="tree-move-number"></div>
-			<div class="tree-sideline-span ${cellRole}">${content}</div>
-		</div>
-	`;
-}
-
-function renderLineBlock(startNodeId, startPly, laneClass, depth = 0, pathNodeIds = null) {
-	const preferredPathNodeIds = pathNodeIds || getPreferredPathNodeIds(startNodeId);
-	const resolvedPathNodeIds = startNodeId === state.treeRootId ? preferredPathNodeIds.slice(1) : preferredPathNodeIds;
-	if (!resolvedPathNodeIds.length) {
-		return "";
-	}
-
-	let html = `<div class="tree-branch-block ${laneClass} depth-${depth}">`;
-	let index = 0;
-	let ply = startPly;
-
-	while (index < resolvedPathNodeIds.length) {
-		const currentNode = getTreeNode(resolvedPathNodeIds[index]);
-		if (!currentNode) {
-			break;
-		}
-
-		const nextNode = resolvedPathNodeIds[index + 1] ? getTreeNode(resolvedPathNodeIds[index + 1]) : null;
-		const rowLabel = ply % 2 === 1 ? `${Math.ceil(ply / 2)}.` : `${Math.ceil(ply / 2)}...`;
-
-		let whiteNode = null;
-		let blackNode = null;
-		let whitePly = ply;
-		let blackPly = ply;
-		let whiteMainChildId = null;
-		let blackMainChildId = null;
-
-		if (ply % 2 === 1) {
-			whiteNode = currentNode;
-			blackNode = nextNode;
-			blackPly = ply + 1;
-			whiteMainChildId = nextNode ? nextNode.id : (currentNode.preferredChildId || currentNode.children[0] || null);
-			blackMainChildId = resolvedPathNodeIds[index + 2] ? resolvedPathNodeIds[index + 2] : null;
-		} else {
-			blackNode = currentNode;
-			blackMainChildId = nextNode ? nextNode.id : (currentNode.preferredChildId || currentNode.children[0] || null);
-		}
-
-		const whiteSideline = whiteNode ? renderSidelineBody(whiteNode, whitePly, whiteMainChildId, laneClass, depth) : "";
-		const blackSideline = blackNode ? renderSidelineBody(blackNode, blackPly, blackMainChildId, laneClass, depth) : "";
-
-		html += `
-			<div class="tree-fullmove-row ${laneClass} tree-depth-${depth}">
-				<div class="tree-move-number">${escapeHtml(rowLabel)}</div>
-				${renderNodeCell(whiteNode, whitePly, whiteMainChildId, laneClass, depth, "white")}
-				${renderNodeCell(blackNode, blackPly, blackMainChildId, laneClass, depth, "black")}
-			</div>
-			${renderSidelineRow(whiteSideline, "white", laneClass, depth)}
-			${renderSidelineRow(blackSideline, "black", laneClass, depth)}
-		`;
-
-		if (ply % 2 === 1 && nextNode) {
-			index += 2;
-			ply += 2;
-		} else {
-			index += 1;
-			ply += 1;
-		}
-	}
-
-	html += `</div>`;
-	return html;
 }
 
 function render() {
