@@ -477,46 +477,57 @@ button.danger {
   display: grid;
   gap: 0.42rem;
 }
-  opacity: 0.22;
 .tree-annotation-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  width: 20px;
-  height: 20px;
-
-  background: radial-gradient(circle at 35% 35%, #fff4ca 0%, #f3c251 55%, #d38c15 100%);
-  border: 2px solid rgba(21, 24, 28, 0.95);
-  box-shadow: 0 0 0 4px rgba(243, 194, 81, 0.22), 0 2px 8px rgba(0, 0, 0, 0.35);
-  color: #f2f5f8;
+  gap: 0.8rem;
 }
 
-  width: 20px;
-  height: 20px;
+.tree-annotation-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #f4f7fb;
+  line-height: 1.1;
+}
+
+.tree-annotation-subtitle {
+  margin-top: 0.14rem;
+  font-size: 0.78rem;
+  line-height: 1.25;
   color: var(--muted);
-  background: radial-gradient(circle at 35% 35%, #fff4ca 0%, #f3c251 55%, #d38c15 100%);
-  border: 2px solid rgba(21, 24, 28, 0.95);
-  box-shadow: 0 0 0 4px rgba(243, 194, 81, 0.22), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
 .tree-annotation-clear {
-  padding: 0.28rem 0.48rem;
-  font-size: 0.74rem;
-  background: rgba(61, 68, 78, 0.95);
-  color: #e8edf3;
   width: 1.1rem;
   height: 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(61, 68, 78, 0.95);
+  color: #e8edf3;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .tree-node-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0.14rem 0.36rem;
+  border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: linear-gradient(160deg, rgba(34, 43, 56, 0.96), rgba(15, 18, 24, 0.96));
   color: #f8fbff;
   font-size: 0.64rem;
-  background: rgba(27, 45, 72, 0.82);
-  color: #dbeafe;
-  font-size: 0.68rem;
-  position: relative;
-  flex: 0 0 auto;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .tree-branch-block {
@@ -530,12 +541,16 @@ button.danger {
   font-weight: 900;
   border-radius: 9px;
   padding: 0.18rem 0.46rem;
+}
+
 .tree-side-block.depth-2 {
   color: #0e1115;
   background: linear-gradient(160deg, #fff6bf, #f1cf63);
   border: 1px solid rgba(120, 88, 0, 0.22);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
 .tree-branch-block.depth-3,
 .tree-side-block.depth-3 {
   padding-left: 1.5rem;
