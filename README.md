@@ -20,6 +20,8 @@ A local-first Firefox extension that opens its own analysis page (no chess.com o
 - `background/background.js`: opens `app/analyzer.html` on toolbar click.
 - `app/main.js`: thin browser entrypoint/orchestrator that bootstraps the analyzer app.
 - `app/core/analyzer-app.mjs`: application composition root and orchestration flow.
+- `app/core/controllers/analysis-controller.mjs`: analysis scheduling, caching, move classification, and mainline scan pipeline.
+- `app/core/controllers/gameplay-controller.mjs`: playback/navigation, keyboard control, and board interaction moves.
 - `app/core/constants.mjs`: defaults and shared constants.
 - `app/core/browser-storage.mjs`: async wrappers for `chrome.storage.local`.
 - `app/ui/*`: DOM refs and rendering helpers (board, tree, classification, overlays).
