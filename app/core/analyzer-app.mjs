@@ -320,14 +320,46 @@ function renderEvalBar() {
 
 	refs.evalWhite.style.height = `${whiteHeight}%`;
 	refs.evalBlack.style.height = `${blackHeight}%`;
+	const mode = state.settings.evalSidebarMode === "ep" ? "ep" : "cp";
+	if (refs.evalBar) {
+		refs.evalBar.classList.toggle("ep-mode", mode === "ep");
+	}
+
+	if (mode === "ep") {
+		const whiteEp = whiteHeight / 100;
+		const blackEp = 1 - whiteEp;
+		refs.evalLabel.textContent = `EP ${whiteEp.toFixed(2)}`;
+		refs.evalLabel.title = `White EP ${whiteEp.toFixed(2)} | Black EP ${blackEp.toFixed(2)}`;
+		return;
+	}
 
 	const cp = cachedResult?.analysis?.cpWhite;
 	if (typeof cp === "number") {
 		const pawns = cp / 100;
 		refs.evalLabel.textContent = pawns >= 0 ? `+${pawns.toFixed(1)}` : pawns.toFixed(1);
+		refs.evalLabel.title = "Centipawn-based evaluation";
 	} else {
 		refs.evalLabel.textContent = "=";
+		refs.evalLabel.title = "Centipawn-based evaluation";
 	}
+}
+
+function syncEvalModeButton() {
+	if (!refs.evalModeBtn) {
+		return;
+	}
+
+	const isEpMode = state.settings.evalSidebarMode === "ep";
+	refs.evalModeBtn.textContent = isEpMode ? "Sidebar: EP" : "Sidebar: CP";
+	refs.evalModeBtn.setAttribute("aria-pressed", String(isEpMode));
+}
+
+function toggleEvalSidebarMode() {
+	state.settings.evalSidebarMode = state.settings.evalSidebarMode === "ep" ? "cp" : "ep";
+	syncEvalModeButton();
+	saveSettings();
+	renderEvalBar();
+	setStatus(state.settings.evalSidebarMode === "ep" ? "Switched to EP sidebar." : "Switched to centipawn sidebar.");
 }
 
 function renderBoardOverlay() {
@@ -531,6 +563,8 @@ async function loadSettings() {
 	refs.boardStyleSelect.value = state.settings.boardStyle;
 	refs.pieceStyleSelect.value = state.settings.pieceStyle;
 	refs.reviewModeToggle.checked = Boolean(state.settings.reviewMode);
+	state.settings.evalSidebarMode = state.settings.evalSidebarMode === "ep" ? "ep" : "cp";
+	syncEvalModeButton();
 	applyBoardTheme();
 	syncSidebarState();
 }
@@ -1025,6 +1059,9 @@ function bindEvents() {
 	refs.flipBtn.addEventListener("click", () => {
 		gameplayController.onFlipBoard();
 	});
+	if (refs.evalModeBtn) {
+		refs.evalModeBtn.addEventListener("click", toggleEvalSidebarMode);
+	}
 	refs.resetBtn.addEventListener("click", resetLine);
 	document.addEventListener("keydown", onGlobalKeyDown);
 }

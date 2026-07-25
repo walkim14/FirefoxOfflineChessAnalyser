@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS = {
 	playerElo: 1600,
 	boardStyle: "brown",
 	pieceStyle: "neo",
+	evalSidebarMode: "cp",
 	sidebarCollapsed: false,
 	reviewMode: false,
 };
