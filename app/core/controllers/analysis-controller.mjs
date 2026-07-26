@@ -252,7 +252,19 @@ export function createAnalysisController({
 				return;
 			}
 
+			setCurrentPlyOnActiveLine(ply);
+			renderBoard();
+			updateMoveList();
+			renderMoveTreePanel();
 			setStatus(`Analyzing move ${ply}/${total}...`);
+			await delay(SCAN_PLAYBACK_DELAY_MS);
+
+			if (myToken !== state.mainlineScanToken) {
+				debugLog("Mainline scan canceled during playback", { ply });
+				state.scanInProgress = false;
+				setScanProgress(done, total, "canceled");
+				return;
+			}
 
 			const scanNodeId = scanNodeIds[ply];
 			const scanNode = scanNodeId ? getTreeNode(scanNodeId) : null;
