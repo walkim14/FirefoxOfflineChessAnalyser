@@ -183,11 +183,11 @@ export function renderLineBlock({
 			whiteNode = currentNode;
 			blackNode = nextNode;
 			blackPly = ply + 1;
-			whiteMainChildId = nextNode ? nextNode.id : (currentNode.preferredChildId || currentNode.children[0] || null);
+			whiteMainChildId = nextNode ? nextNode.id : (currentNode.children[0] || null);
 			blackMainChildId = resolvedPathNodeIds[index + 2] ? resolvedPathNodeIds[index + 2] : null;
 		} else {
 			blackNode = currentNode;
-			blackMainChildId = nextNode ? nextNode.id : (currentNode.preferredChildId || currentNode.children[0] || null);
+			blackMainChildId = nextNode ? nextNode.id : (currentNode.children[0] || null);
 		}
 
 		const whiteSideline = whiteNode

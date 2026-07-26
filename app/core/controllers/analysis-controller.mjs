@@ -33,6 +33,7 @@ export function createAnalysisController({
 		state.moveClassifications = state.activeLineNodeIds.slice(1).map(() => null);
 		state.latestClassification = null;
 		state.latestBestMove = null;
+		state.latestBestMoveFen = null;
 		state.reviewPlaybackToken += 1;
 		state.reviewAnimating = false;
 		state.mainlineScanToken += 1;
@@ -93,6 +94,7 @@ export function createAnalysisController({
 		if (cached?.analysis) {
 			const { analysis, mode: cacheMode } = cached;
 			state.latestBestMove = analysis.bestMove;
+			state.latestBestMoveFen = fen;
 			updateEngineLinesView(analysis);
 			renderBoard();
 			renderEvalBar();
@@ -124,6 +126,7 @@ export function createAnalysisController({
 
 			state.positionCache.set(cacheKey, analysis);
 			state.latestBestMove = analysis.bestMove;
+			state.latestBestMoveFen = fen;
 			updateEngineLinesView(analysis);
 			renderBoard();
 			renderEvalBar();
@@ -147,8 +150,8 @@ export function createAnalysisController({
 
 	function getScanProfile() {
 		return {
-			depth: Math.min(state.settings.depth, 18),
-			multiPV: Math.min(state.settings.multiPV, 2),
+			depth: state.settings.depth,
+			multiPV: state.settings.multiPV,
 		};
 	}
 

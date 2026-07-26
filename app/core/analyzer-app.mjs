@@ -81,6 +81,7 @@ const state = {
 	analysisDebounceHandle: null,
 	isClassifying: false,
 	latestBestMove: null,
+	latestBestMoveFen: null,
 	latestClassification: null,
 	reviewPlaybackToken: 0,
 	reviewAnimating: false,
@@ -252,11 +253,19 @@ function getCachedAnalysis(fen, depth, multiPV, allowClosest = false) {
 function bestMoveForDisplayedPly() {
 	const currentFen = state.timelineFens[state.currentPly];
 	if (!currentFen) {
-		return state.latestBestMove;
+		return null;
 	}
 
 	const cached = getCachedAnalysis(currentFen, state.settings.depth, state.settings.multiPV, true);
-	return cached?.analysis?.bestMove || null;
+	if (cached?.analysis?.bestMove) {
+		return cached.analysis.bestMove;
+	}
+
+	if (state.latestBestMove && state.latestBestMoveFen === currentFen) {
+		return state.latestBestMove;
+	}
+
+	return null;
 }
 
 function squareCenterOnOverlay(square) {
