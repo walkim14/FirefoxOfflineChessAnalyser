@@ -156,7 +156,7 @@ export function createAnalysisController({
 	function getScanProfile() {
 		return {
 			depth: state.settings.depth,
-			multiPV: state.settings.multiPV,
+			multiPV: 1,
 		};
 	}
 
@@ -234,6 +234,7 @@ export function createAnalysisController({
 		state.scanInProgress = true;
 		const originalPly = state.currentPly;
 		const total = state.lineMoves.length;
+		const scanNodeIds = state.activeLineNodeIds.slice();
 		const { depth: scanDepth, multiPV: scanMultiPV } = getScanProfile();
 		let done = 0;
 		let previousAfterFen = null;
@@ -251,23 +252,12 @@ export function createAnalysisController({
 				return;
 			}
 
-			setCurrentPlyOnActiveLine(ply);
-			renderBoard();
-			updateMoveList();
-			renderMoveTreePanel();
 			setStatus(`Analyzing move ${ply}/${total}...`);
-			await delay(SCAN_PLAYBACK_DELAY_MS);
 
-			if (myToken !== state.mainlineScanToken) {
-				debugLog("Mainline scan canceled during playback", { ply });
-				state.scanInProgress = false;
-				setScanProgress(done, total, "canceled");
-				return;
-			}
-
-			const scanNodeId = state.activeLineNodeIds[ply];
+			const scanNodeId = scanNodeIds[ply];
 			const scanNode = scanNodeId ? getTreeNode(scanNodeId) : null;
 			if (scanNode?.classification) {
+				state.moveClassifications[ply - 1] = scanNode.classification;
 				done += 1;
 				setScanProgress(done, total, "running");
 				continue;
@@ -325,10 +315,10 @@ export function createAnalysisController({
 				});
 				if (scanNode) {
 					scanNode.classification = classification;
-					syncLineFromTree();
 				}
+				state.moveClassifications[ply - 1] = classification;
 
-				if (state.currentPly === ply) {
+				if (originalPly === ply) {
 					updateClassificationView(classification);
 				}
 
@@ -339,6 +329,7 @@ export function createAnalysisController({
 				setStatus(`Mainline scan stopped at ply ${ply}: ${error?.message || error}`);
 				state.scanInProgress = false;
 				setScanProgress(done, total, "failed");
+				syncLineFromTree();
 				setCurrentPlyOnActiveLine(originalPly);
 				render();
 				schedulePositionAnalysis(80);
@@ -350,6 +341,7 @@ export function createAnalysisController({
 			debugLog("Mainline scan complete", { plies: state.lineMoves.length });
 			state.scanInProgress = false;
 			setScanProgress(total, total, "done");
+			syncLineFromTree();
 			setCurrentPlyOnActiveLine(originalPly);
 			render();
 			schedulePositionAnalysis(80);
