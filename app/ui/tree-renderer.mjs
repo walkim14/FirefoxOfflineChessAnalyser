@@ -17,7 +17,7 @@ function getPreferredPathNodeIds(startNodeId, getTreeNode) {
 
 	while (cursor) {
 		nodeIds.push(cursor.id);
-		const nextId = cursor.preferredChildId || cursor.children[0];
+		const nextId = cursor.children[0];
 		if (!nextId) {
 			break;
 		}

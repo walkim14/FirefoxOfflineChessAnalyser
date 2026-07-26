@@ -250,22 +250,12 @@ function getCachedAnalysis(fen, depth, multiPV, allowClosest = false) {
 }
 
 function bestMoveForDisplayedPly() {
-	if (state.currentPly <= 0) {
+	const currentFen = state.timelineFens[state.currentPly];
+	if (!currentFen) {
 		return state.latestBestMove;
 	}
 
-	const moveIndex = state.currentPly - 1;
-	const moveClassification = state.moveClassifications[moveIndex];
-	if (moveClassification?.bestMove) {
-		return moveClassification.bestMove;
-	}
-
-	const beforeFen = state.timelineFens[moveIndex];
-	if (!beforeFen) {
-		return null;
-	}
-
-	const cached = getCachedAnalysis(beforeFen, state.settings.depth, state.settings.multiPV, true);
+	const cached = getCachedAnalysis(currentFen, state.settings.depth, state.settings.multiPV, true);
 	return cached?.analysis?.bestMove || null;
 }
 

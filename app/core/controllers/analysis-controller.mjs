@@ -88,20 +88,28 @@ export function createAnalysisController({
 		const game = gameAtPly(state.currentPly);
 		const fen = game.fen();
 		const cacheKey = cacheKeyFor(fen, state.settings.depth, state.settings.multiPV);
-		const cached = getCachedAnalysis(fen, state.settings.depth, state.settings.multiPV, true);
+		const cachedExact = getCachedAnalysis(fen, state.settings.depth, state.settings.multiPV, false);
+		const cachedApprox = getCachedAnalysis(fen, state.settings.depth, state.settings.multiPV, true);
 
-		if (cached?.analysis) {
-			const { analysis, mode: cacheMode } = cached;
+		if (cachedExact?.analysis) {
+			const { analysis } = cachedExact;
 			state.latestBestMove = analysis.bestMove;
 			updateEngineLinesView(analysis);
 			renderBoard();
 			renderEvalBar();
 			const turnLabel = analysis.sideToMove === "w" ? "White" : "Black";
-			const cachedSuffix = cacheMode === "approx" ? " | cached (approx)" : " | cached";
 			setStatus(
-				`${turnLabel} to move | eval ${analysis.evalText} | white win ${analysis.winPercentWhite.toFixed(1)}% | depth ${analysis.depthReached} | nps ${analysis.nps || 0}${cachedSuffix}`,
+				`${turnLabel} to move | eval ${analysis.evalText} | white win ${analysis.winPercentWhite.toFixed(1)}% | depth ${analysis.depthReached} | nps ${analysis.nps || 0} | cached`,
 			);
 			return;
+		}
+
+		if (cachedApprox?.analysis) {
+			const { analysis } = cachedApprox;
+			state.latestBestMove = analysis.bestMove;
+			updateEngineLinesView(analysis);
+			renderBoard();
+			renderEvalBar();
 		}
 
 		setStatus("Analyzing current position...");
@@ -147,8 +155,8 @@ export function createAnalysisController({
 
 	function getScanProfile() {
 		return {
-			depth: Math.min(state.settings.depth, 18),
-			multiPV: Math.min(state.settings.multiPV, 2),
+			depth: state.settings.depth,
+			multiPV: state.settings.multiPV,
 		};
 	}
 
