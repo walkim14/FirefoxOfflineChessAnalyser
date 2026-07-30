@@ -280,22 +280,29 @@ function getCachedAnalysis(fen, depth, multiPV, allowClosest = false) {
 	return { analysis: best.analysis, mode: "approx" };
 }
 
-function bestMoveForDisplayedPly() {
-	const currentFen = state.timelineFens[state.currentPly];
-	if (!currentFen) {
-		return null;
+function isLegalMoveIn(game, uci) {
+	if (!uci || uci.length < 4) {
+		return false;
 	}
+
+	return game
+		.moves({ verbose: true })
+		.some((move) => `${move.from}${move.to}${move.promotion || ""}` === uci);
+}
+
+function bestMoveForDisplayedPly() {
+	// Read the position through chess.js so the lookup uses the same normalised
+	// FEN the cache is keyed on; a raw PGN/FEN-tag string can differ textually.
+	const game = gameAtPly(state.currentPly);
+	const currentFen = game.fen();
 
 	const cached = getCachedAnalysis(currentFen, state.settings.depth, state.settings.multiPV, true);
-	if (cached?.analysis?.bestMove) {
-		return cached.analysis.bestMove;
-	}
+	const candidate = cached?.analysis?.bestMove
+		|| (state.latestBestMoveFen === currentFen ? state.latestBestMove : null);
 
-	if (state.latestBestMove && state.latestBestMoveFen === currentFen) {
-		return state.latestBestMove;
-	}
-
-	return null;
+	// An arrow that is not playable in the position on the board belongs to some
+	// other ply. Drawing nothing is better than pointing somewhere wrong.
+	return isLegalMoveIn(game, candidate) ? candidate : null;
 }
 
 function squareCenterOnOverlay(square) {
@@ -402,8 +409,12 @@ function renderBoardOverlay() {
 
 	if (!bestArrowMove || bestArrowMove.length < 4) {
 		refs.boardOverlay.innerHTML = "";
+		refs.boardOverlay.removeAttribute("data-best-move");
 		return;
 	}
+
+	// Mirrors the drawn arrow so it can be asserted on without decoding geometry.
+	refs.boardOverlay.setAttribute("data-best-move", bestArrowMove);
 
 	const bestFrom = bestArrowMove.slice(0, 2);
 	const bestTo = bestArrowMove.slice(2, 4);
