@@ -62,40 +62,53 @@ function moveFromUci(uci) {
   };
 }
 
+const NOT_A_SACRIFICE = { isSacrifice: false, minNetLoss: 0 };
+
 function looksLikeSacrifice({ gameBefore, playedMoveUci, playerElo }) {
   const move = moveFromUci(playedMoveUci);
   if (!move) {
-    return false;
+    return NOT_A_SACRIFICE;
   }
 
   const boardBefore = gameBefore.board();
   const movingPieceSquare = findSquare(boardBefore, move.from);
   if (!movingPieceSquare || movingPieceSquare.color !== gameBefore.turn()) {
-    return false;
+    return NOT_A_SACRIFICE;
   }
 
   const pieceValue = PIECE_VALUES[movingPieceSquare.type] || 0;
   const minPieceValue = playerElo < 1200 ? 2 : 3;
   if (pieceValue < minPieceValue) {
-    return { isSacrifice: false, minNetLoss: 0 };
+    return NOT_A_SACRIFICE;
   }
 
   const gameAfter = new gameBefore.constructor(gameBefore.fen());
-  const applied = gameAfter.move(move);
+  let applied = null;
+  try {
+    // chess.js throws instead of returning null for a move it rejects.
+    applied = gameAfter.move(move);
+  } catch {
+    return NOT_A_SACRIFICE;
+  }
   if (!applied || applied.captured) {
-    return { isSacrifice: false, minNetLoss: 0 };
+    return NOT_A_SACRIFICE;
   }
 
   const replies = gameAfter.moves({ verbose: true });
   const immediateCaptures = replies.filter((reply) => reply.to === move.to && Boolean(reply.captured));
   if (immediateCaptures.length === 0) {
-    return { isSacrifice: false, minNetLoss: 0 };
+    return NOT_A_SACRIFICE;
   }
 
   let minNetLoss = Number.POSITIVE_INFINITY;
   for (const reply of immediateCaptures) {
     const afterCapture = new gameAfter.constructor(gameAfter.fen());
-    const captureApplied = afterCapture.move(reply);
+    let captureApplied = null;
+    try {
+      captureApplied = afterCapture.move(reply);
+    } catch {
+      continue;
+    }
     if (!captureApplied) {
       continue;
     }
@@ -115,7 +128,7 @@ function looksLikeSacrifice({ gameBefore, playedMoveUci, playerElo }) {
   }
 
   if (!Number.isFinite(minNetLoss)) {
-    return { isSacrifice: false, minNetLoss: 0 };
+    return NOT_A_SACRIFICE;
   }
 
   return {

@@ -8,13 +8,22 @@ function isWorkerCrashError(error) {
   return message.toLowerCase().includes("worker crashed") || message.toLowerCase().includes("unreachable");
 }
 
+function isCancellation(error) {
+  return /^Canceled\b/.test(String(error?.message || error || ""));
+}
+
 export async function analyzeWithFallback({ engine, fen, depth, multiPV, phase = "unknown", logger = () => {} }) {
+  // Each fallback must be strictly cheaper than the attempt before it, so the
+  // clamps can never push a retry above the requested depth.
+  const step = (floor, drop) => Math.min(depth, Math.max(floor, depth - drop));
   const profiles = [
     { depth, multiPV },
-    { depth: Math.max(16, depth - 2), multiPV: Math.min(multiPV, 2) },
-    { depth: Math.max(14, depth - 4), multiPV: 1 },
-    { depth: 12, multiPV: 1 },
-  ];
+    { depth: step(16, 2), multiPV: Math.min(multiPV, 2) },
+    { depth: step(14, 4), multiPV: 1 },
+    { depth: Math.min(depth, 12), multiPV: 1 },
+  ].filter((profile, index, all) =>
+    index === 0 || profile.depth < all[index - 1].depth || profile.multiPV < all[index - 1].multiPV,
+  );
 
   let lastError = null;
 
@@ -36,6 +45,12 @@ export async function analyzeWithFallback({ engine, fen, depth, multiPV, phase =
 
       return { result, usedProfile: profile, attempt: i + 1 };
     } catch (error) {
+      // A cancellation means someone newer wants the engine; retrying at a
+      // lower profile would just fight them for it.
+      if (isCancellation(error)) {
+        throw error;
+      }
+
       lastError = error;
       const timeout = isTimeoutError(error);
       const workerCrash = isWorkerCrashError(error);

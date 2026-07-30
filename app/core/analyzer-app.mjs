@@ -1,5 +1,5 @@
 import { Chess } from "../../vendor/chess.js";
-import { StockfishClient } from "../stockfish-client.js";
+import { StockfishClient } from "../stockfish-client.mjs";
 import { classifyMove, expectedWhitePercent } from "../move-classifier.mjs";
 import { parsePgnToLine } from "../pgn-loader.mjs";
 import { analyzeWithFallback } from "../analysis-fallback.mjs";
@@ -36,7 +36,7 @@ import {
 } from "./constants.mjs";
 import { getDomRefs } from "../ui/dom-refs.mjs";
 import { storageGet, storageSet } from "./browser-storage.mjs";
-import { getReferenceMainlineNodeIds, renderLineBlock } from "../ui/tree-renderer.mjs";
+import { getReferenceMainlineNodeIds, renderMoveTree } from "../ui/tree-renderer.mjs";
 import { initCollapsiblePanels } from "../ui/collapsible-panels.mjs";
 import { createAnalysisController } from "./controllers/analysis-controller.mjs";
 import { createGameplayController } from "./controllers/gameplay-controller.mjs";
@@ -87,6 +87,7 @@ const state = {
 	reviewAnimating: false,
 	treeExpandedParents: new Set(),
 	annotationDialogNodeId: null,
+	promotionPending: false,
 };
 
 const refs = getDomRefs();
@@ -95,6 +96,32 @@ const engine = new StockfishClient({ debugLabel: "ui", debug: true });
 
 function clamp(value, min, max) {
 	return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Brings `element` into view *within* `container` and nowhere else.
+ *
+ * `Element.scrollIntoView` scrolls every scrollable ancestor, up to and
+ * including the document. The move list and tree re-render on every ply of a
+ * whole-game scan, so using it there dragged the whole page down again and
+ * again while analysis ran.
+ */
+function keepVisibleInside(container, element) {
+	if (!container || !element || typeof container.getBoundingClientRect !== "function") {
+		return;
+	}
+
+	const containerBox = container.getBoundingClientRect();
+	const elementBox = element.getBoundingClientRect();
+	if (!containerBox.height || !elementBox.height) {
+		return;
+	}
+
+	if (elementBox.top < containerBox.top) {
+		container.scrollTop -= containerBox.top - elementBox.top;
+	} else if (elementBox.bottom > containerBox.bottom) {
+		container.scrollTop += elementBox.bottom - containerBox.bottom;
+	}
 }
 
 function delay(ms) {
@@ -136,7 +163,7 @@ function renderMoveTreePanel() {
 		return;
 	}
 
-	const referenceLineNodeIds = state.mainlineNodeIds.length > 0
+	const referenceLineNodeIds = state.mainlineNodeIds.length > 1
 		? state.mainlineNodeIds
 		: getReferenceMainlineNodeIds(state.treeRootId, getTreeNode);
 	if (referenceLineNodeIds.length <= 1) {
@@ -145,16 +172,14 @@ function renderMoveTreePanel() {
 		return;
 	}
 
-	const treeHtml = renderLineBlock({
-		startNodeId: referenceLineNodeIds[0],
+	const treeHtml = renderMoveTree({
+		// The root holds no move of its own, so the spine starts at ply 1.
+		pathNodeIds: referenceLineNodeIds.slice(1),
 		startPly: 1,
-		laneClass: "mainline",
-		depth: 0,
-		pathNodeIds: referenceLineNodeIds,
 		getTreeNode,
-		treeExpandedParents: state.treeExpandedParents,
 		currentNodeId: state.currentNodeId,
-		rootNodeId: state.treeRootId,
+		expandedParents: state.treeExpandedParents,
+		classIcons: CLASS_ICONS,
 	});
 	refs.treePath.innerHTML = `<div class="tree-branch-panel"><div class="tree-mainline-rail" aria-hidden="true"></div><div class="tree-rows">${treeHtml}</div></div>`;
 	refs.treeChildren.innerHTML = "";
@@ -162,6 +187,9 @@ function renderMoveTreePanel() {
 	refs.treePath.querySelectorAll("button[data-tree-action='jump-node']").forEach((button) => {
 		button.addEventListener("click", () => {
 			const nodeId = Number(button.getAttribute("data-node-id"));
+			cancelMainlineScan();
+			state.reviewPlaybackToken += 1;
+			state.reviewAnimating = false;
 			setCurrentNode(nodeId);
 			clearSelection();
 			render();
@@ -192,9 +220,11 @@ function renderMoveTreePanel() {
 			} else {
 				state.treeExpandedParents.add(parentNodeId);
 			}
-			render();
+			renderMoveTreePanel();
 		});
 	});
+
+	keepVisibleInside(refs.treePath, refs.treePath.querySelector(".tree-chip.current"));
 }
 function uciToMoveObject(uci) {
 	return uciToMoveObjectState(uci);
@@ -322,6 +352,8 @@ function renderEvalBar() {
 	const mode = state.settings.evalSidebarMode === "ep" ? "ep" : "cp";
 	if (refs.evalBar) {
 		refs.evalBar.classList.toggle("ep-mode", mode === "ep");
+		// The bar tracks the board: whoever is on the bottom gets the bottom half.
+		refs.evalBar.classList.toggle("flipped", state.orientation === "black");
 	}
 
 	if (mode === "ep") {
@@ -580,7 +612,6 @@ function loadPgnFromInput() {
 	try {
 		parsed = parsePgnToLine(pgn, Chess);
 		state.startFen = parsed.startFen;
-		state.lineMoves = parsed.lineMoves;
 		state.players.whiteName = parsed.headers?.White || "White";
 		state.players.blackName = parsed.headers?.Black || "Black";
 		state.players.whiteElo = parsed.whiteElo;
@@ -602,16 +633,30 @@ function loadPgnFromInput() {
 		return;
 	}
 
-	initializeMoveTreeFromLine(state.startFen, state.lineMoves, parsed?.clockTimeline || null);
+	clearCaches();
+	initializeMoveTreeFromLine(state.startFen, parsed.lineMoves, parsed?.clockTimeline || null);
 	state.currentNodeId = state.treeRootId;
 	state.mainlineNodeIds = state.activeLineNodeIds.slice();
 	buildTimelineFromLine();
-	clearCaches();
 	toggleSidebarCollapsed(true);
 	clearSelection();
 	render();
-	setStatus(`Loaded PGN with ${state.lineMoves.length} plies.`);
-	schedulePositionAnalysis(80);
+
+	if (parsed.lineMoves.length !== state.lineMoves.length) {
+		setStatus(
+			`Loaded ${state.lineMoves.length} of ${parsed.lineMoves.length} plies; the rest of the PGN could not be replayed.`,
+		);
+	} else {
+		setStatus(`Loaded PGN with ${state.lineMoves.length} plies.`);
+	}
+
+	if (state.lineMoves.length === 0) {
+		schedulePositionAnalysis(80);
+		return;
+	}
+
+	// The scan owns the engine from here; it schedules a position analysis when
+	// it finishes. Kicking one off now would only cancel its first search.
 	scanMainlineClassifications();
 }
 
@@ -643,10 +688,10 @@ function loadFenFromInput() {
 }
 
 async function applyEngineSettings() {
-	state.settings.depth = clamp(Number(refs.depthInput.value) || 22, 12, 30);
-	state.settings.multiPV = clamp(Number(refs.multipvInput.value) || 3, 1, 4);
-	state.settings.hashMb = clamp(Number(refs.hashInput.value) || 256, 64, 512);
-	state.settings.playerElo = clamp(Number(refs.eloInput.value) || 1600, 400, 3000);
+	state.settings.depth = clamp(Number(refs.depthInput.value) || DEFAULT_SETTINGS.depth, 12, 30);
+	state.settings.multiPV = clamp(Number(refs.multipvInput.value) || DEFAULT_SETTINGS.multiPV, 1, 4);
+	state.settings.hashMb = clamp(Number(refs.hashInput.value) || DEFAULT_SETTINGS.hashMb, 64, 512);
+	state.settings.playerElo = clamp(Number(refs.eloInput.value) || DEFAULT_SETTINGS.playerElo, 400, 3000);
 	saveSettings();
 	clearCaches();
 	buildTimelineFromLine();
@@ -654,8 +699,31 @@ async function applyEngineSettings() {
 	refs.depthInput.value = String(state.settings.depth);
 	refs.multipvInput.value = String(state.settings.multiPV);
 	refs.eloInput.value = String(state.settings.playerElo);
+
+	// Hash/Threads/MultiPV only reach the engine through `setoption`; without
+	// this the sidebar values were cosmetic.
+	try {
+		await engine.configure({
+			hashMb: state.settings.hashMb,
+			threads: threadCountForEngine(),
+			multiPV: state.settings.multiPV,
+		});
+	} catch (error) {
+		debugLog("Engine configuration failed", String(error?.message || error));
+		setStatus(`Engine configuration failed: ${error?.message || error}`);
+	}
+
 	render();
 	schedulePositionAnalysis(80);
+}
+
+function threadCountForEngine() {
+	if (!globalThis.crossOriginIsolated) {
+		return 1;
+	}
+
+	const cores = Number(globalThis.navigator?.hardwareConcurrency) || 1;
+	return clamp(cores - 1, 1, 8);
 }
 
 function boardCoordinates() {
@@ -715,15 +783,23 @@ const gameplayController = createGameplayController({
 	isReviewSkipLabel,
 	queueMoveClassification,
 	schedulePositionAnalysis,
+	cancelMainlineScan,
 	clearSelection,
 	render,
 	renderBoard,
 	renderPlayers,
 	closeTreeAnnotationDialog,
+	requestPromotionChoice,
+	setStatus,
+	debugLog,
 });
 
 function clearCaches() {
 	return analysisController.clearCaches();
+}
+
+function cancelMainlineScan() {
+	return analysisController.cancelMainlineScan();
 }
 
 function setScanProgress(done, total, phase) {
@@ -833,6 +909,73 @@ function clearTreeAnnotationDialog() {
 	setTreeAnnotation(nodeId, "", "");
 }
 
+const PROMOTION_PIECES = [
+	{ code: "q", name: "Queen" },
+	{ code: "r", name: "Rook" },
+	{ code: "b", name: "Bishop" },
+	{ code: "n", name: "Knight" },
+];
+
+/**
+ * Resolves with the piece code to promote to, or null if the user backs out.
+ * Falls back to a queen when the dialog is unavailable.
+ */
+function requestPromotionChoice(moverColor) {
+	if (!refs.promotionModal || !refs.promotionChoices) {
+		return Promise.resolve("q");
+	}
+
+	return new Promise((resolve) => {
+		const color = moverColor === "b" ? "b" : "w";
+		refs.promotionChoices.innerHTML = PROMOTION_PIECES.map((piece) => {
+			const url = getPieceAssetUrl({ color, type: piece.code });
+			return `<button type="button" class="promotion-choice" data-piece="${piece.code}" title="${piece.name}" aria-label="${piece.name}"><img src="${url}" alt="${piece.name}" /></button>`;
+		}).join("");
+
+		const settle = (piece) => {
+			refs.promotionModal.classList.add("hidden");
+			refs.promotionModal.setAttribute("aria-hidden", "true");
+			refs.promotionModal.removeEventListener("click", onBackdropClick);
+			document.removeEventListener("keydown", onKeyDown, true);
+			state.promotionPending = false;
+			resolve(piece);
+		};
+
+		const onBackdropClick = (event) => {
+			const choice = event.target instanceof HTMLElement ? event.target.closest(".promotion-choice") : null;
+			if (choice) {
+				settle(choice.getAttribute("data-piece"));
+				return;
+			}
+			if (event.target === refs.promotionModal) {
+				settle(null);
+			}
+		};
+
+		const onKeyDown = (event) => {
+			if (event.key === "Escape") {
+				event.preventDefault();
+				event.stopPropagation();
+				settle(null);
+				return;
+			}
+			const match = PROMOTION_PIECES.find((piece) => piece.code === event.key.toLowerCase());
+			if (match) {
+				event.preventDefault();
+				event.stopPropagation();
+				settle(match.code);
+			}
+		};
+
+		state.promotionPending = true;
+		refs.promotionModal.classList.remove("hidden");
+		refs.promotionModal.setAttribute("aria-hidden", "false");
+		refs.promotionModal.addEventListener("click", onBackdropClick);
+		document.addEventListener("keydown", onKeyDown, true);
+		refs.promotionChoices.querySelector(".promotion-choice")?.focus();
+	});
+}
+
 function getScanProfile() {
 	return analysisController.getScanProfile();
 }
@@ -862,28 +1005,29 @@ function updateMoveList() {
 	const entries = [];
 	for (let i = 0; i < state.lineMoves.length; i += 1) {
 		const ply = i + 1;
-		const moveText = state.lineMoves[i];
+		const node = getTreeNode(state.activeLineNodeIds[ply]);
+		const moveText = node?.moveSan || state.lineMoves[i];
 		const fullMove = Math.ceil(ply / 2);
 		const prefix = ply % 2 === 1 ? `${fullMove}.` : `${fullMove}...`;
 		const currentClass = state.currentPly === ply ? "current" : "";
+		const label = node?.classification?.label || "";
+		const slug = label.toLowerCase().replace(/\s+/g, "-");
+		const icon = slug ? CLASS_ICONS[slug] : null;
+		const badge = icon ? `<span class="move-item-class ${slug}" title="${label}">${icon}</span>` : "";
 
 		entries.push(
-			`<div class="move-item ${currentClass}"><button data-ply="${ply}" type="button">${prefix} ${moveText}</button></div>`,
+			`<div class="move-item ${currentClass}"><button data-ply="${ply}" type="button"><span class="move-item-text">${prefix} ${moveText}</span>${badge}</button></div>`,
 		);
 	}
 
 	refs.moveList.innerHTML = entries.join("");
 	refs.moveList.querySelectorAll("button[data-ply]").forEach((button) => {
 		button.addEventListener("click", () => {
-			state.reviewPlaybackToken += 1;
-			state.reviewAnimating = false;
-			const ply = Number(button.getAttribute("data-ply"));
-			setCurrentPlyOnActiveLine(ply);
-			clearSelection();
-			render();
-			schedulePositionAnalysis(80);
+			seekToPly(Number(button.getAttribute("data-ply")));
 		});
 	});
+
+	keepVisibleInside(refs.moveList, refs.moveList.querySelector(".move-item.current"));
 }
 
 function renderBoard() {
@@ -958,7 +1102,11 @@ function renderBoard() {
 			button.classList.add("to-flash");
 		}
 
-		button.addEventListener("click", () => onSquareClick(square));
+		button.addEventListener("click", () => {
+			Promise.resolve(onSquareClick(square)).catch((error) => {
+				debugLog("Board interaction failed", String(error?.message || error));
+			});
+		});
 		refs.board.appendChild(button);
 	}
 
@@ -1004,10 +1152,13 @@ async function scanMainlineClassifications() {
 }
 
 function resetLine() {
+	cancelMainlineScan();
 	resetMoveTree(state.startFen);
+	state.mainlineNodeIds = [state.treeRootId];
 	clearCaches();
 	clearSelection();
 	render();
+	setStatus("Line reset to the starting position.");
 	schedulePositionAnalysis(80);
 }
 
@@ -1047,6 +1198,9 @@ function bindEvents() {
 		setStatus(state.settings.reviewMode ? "Review mode: skipping Good/Excellent moves." : "Review mode off.");
 	});
 	refs.analyzeBtn.addEventListener("click", () => {
+		// An explicit request wins over a running whole-game scan.
+		cancelMainlineScan();
+		setScanProgress(state.scanProgress.done, state.scanProgress.total, "canceled");
 		schedulePositionAnalysis(0);
 	});
 	refs.prevBtn.addEventListener("click", () => {

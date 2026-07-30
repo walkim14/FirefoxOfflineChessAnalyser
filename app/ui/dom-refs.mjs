@@ -51,5 +51,7 @@ export function getDomRefs() {
 		annotationSaveBtn: document.getElementById("annotation-save-btn"),
 		annotationClearBtn: document.getElementById("annotation-clear-btn"),
 		annotationCancelBtn: document.getElementById("annotation-cancel-btn"),
+		promotionModal: document.getElementById("promotion-modal"),
+		promotionChoices: document.getElementById("promotion-choices"),
 	};
 }

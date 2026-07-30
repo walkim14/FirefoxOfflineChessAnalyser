@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Offline Chess Analyzer</title>
+    <link rel="icon" type="image/svg+xml" href="../assets/icons/knight.svg" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -188,6 +189,14 @@
           <button id="annotation-clear-btn" type="button" class="ghost">Clear</button>
           <button id="annotation-save-btn" type="button">Save</button>
         </div>
+      </div>
+    </div>
+
+    <div id="promotion-modal" class="annotation-modal promotion-modal hidden" aria-hidden="true">
+      <div class="annotation-dialog promotion-dialog" role="dialog" aria-modal="true" aria-labelledby="promotion-dialog-title">
+        <h3 id="promotion-dialog-title">Promote to</h3>
+        <div id="promotion-choices" class="promotion-choices"></div>
+        <p class="promotion-hint">Press Q, R, B or N &middot; Esc to cancel</p>
       </div>
     </div>
 

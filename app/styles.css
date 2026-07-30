@@ -619,30 +619,24 @@ button.danger {
   gap: 0.18rem;
 }
 
+/* Nesting is unbounded, so indentation comes from the containing block rather
+   than from per-depth classes. */
 .tree-side-block {
   display: grid;
   gap: 0.28rem;
-  margin: 0.02rem 0 0.16rem;
+  margin: 0.12rem 0 0.16rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid rgba(140, 190, 236, 0.34);
 }
 
-.tree-ply-toggle-stack {
-  display: grid;
-  align-items: start;
-  gap: 0.2rem;
-  margin-left: 0.1rem;
-}
-
-.tree-ply-cell.white .tree-ply-toggle-stack,
-.tree-ply-cell.black .tree-ply-toggle-stack {
-  margin-top: 0.02rem;
+.tree-side-block > .tree-branch-block + .tree-branch-block {
+  margin-top: 0.28rem;
+  padding-top: 0.28rem;
+  border-top: 1px dashed rgba(140, 190, 236, 0.22);
 }
 
 .tree-ply-cell.empty {
   min-height: 1.6rem;
-}
-
-.tree-ply-cell .tree-var-toggle {
-  margin-left: 0.06rem;
 }
 
 .tree-ply-cell .tree-chip.black {
@@ -877,15 +871,23 @@ textarea {
 
 .meta-list,
 .lines,
+/* Both panels scroll on their own so following the current move never moves
+   the page underneath the board. */
 .move-list {
   display: grid;
   gap: 0.32rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .tree-path {
   font-size: 0.8rem;
   color: var(--muted);
   line-height: 1.35;
+  max-height: 26rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .tree-children {
@@ -1070,48 +1072,11 @@ textarea {
 }
 
 .tree-var-count {
-  display: none;
-}
-
-.tree-variation-group {
-  display: grid;
-  gap: 0.2rem;
-  margin: -0.06rem 0 0.16rem;
-}
-
-.tree-variation-item {
-  display: grid;
-  grid-template-columns: 2.05rem auto auto;
-  gap: 0.3rem;
-  align-items: center;
-}
-
-.tree-variation-group.white-lane .tree-variation-item,
-.tree-variation-group.black-lane .tree-variation-item {
-  padding-left: 0.62rem;
-}
-
-.tree-variation-item.depth-1,
-.tree-variation-toggle-row.depth-1 {
-  padding-left: 0.7rem;
-}
-
-.tree-variation-item.depth-2,
-.tree-variation-toggle-row.depth-2 {
-  padding-left: 1.25rem;
-}
-
-.tree-variation-item.depth-3,
-.tree-variation-toggle-row.depth-3 {
-  padding-left: 1.8rem;
-}
-
-.tree-variation-prefix {
-  text-align: right;
-  font-size: 0.74rem;
+  display: inline-block;
+  margin-left: 0.12rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  color: rgba(148, 205, 255, 0.82);
-  padding-right: 0.05rem;
+  opacity: 0.86;
 }
 
 .tree-variation-toggle-row {
@@ -1121,6 +1086,59 @@ textarea {
   gap: 0.25rem;
   padding-left: 0.1rem;
   margin: 0.08rem 0 0.14rem;
+}
+
+/* Classification badge carried by a move chip, matching the board tags. */
+.tree-chip-class,
+.move-item-class {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05em;
+  margin-right: 0.24rem;
+  padding: 0 0.16em;
+  border-radius: 999px;
+  font-size: 0.78em;
+  font-weight: 800;
+  line-height: 1.35;
+  background: rgba(12, 16, 22, 0.24);
+}
+
+.move-item-class {
+  margin-right: 0;
+  margin-left: 0.34rem;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.tree-chip-class.book,
+.move-item-class.book {
+  background: rgba(134, 214, 239, 0.34);
+}
+
+.tree-chip-class.best,
+.tree-chip-class.brilliant,
+.tree-chip-class.great,
+.move-item-class.best,
+.move-item-class.brilliant,
+.move-item-class.great {
+  background: rgba(29, 216, 97, 0.32);
+}
+
+.tree-chip-class.inaccuracy,
+.move-item-class.inaccuracy {
+  background: rgba(252, 211, 77, 0.38);
+}
+
+.tree-chip-class.mistake,
+.tree-chip-class.miss,
+.move-item-class.mistake,
+.move-item-class.miss {
+  background: rgba(252, 165, 165, 0.42);
+}
+
+.tree-chip-class.blunder,
+.move-item-class.blunder {
+  background: rgba(239, 68, 68, 0.48);
 }
 
 .overview-player {
@@ -1290,4 +1308,52 @@ textarea {
     width: 18px;
     min-width: 18px;
   }
+}
+
+/* Evaluation bar follows the board orientation. */
+.eval-bar.flipped {
+  flex-direction: column-reverse;
+}
+
+.promotion-dialog {
+  width: min(94vw, 320px);
+  justify-items: center;
+  text-align: center;
+}
+
+.promotion-choices {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.promotion-choice {
+  display: grid;
+  place-items: center;
+  padding: 0.3rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(60, 65, 74, 0.92);
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.promotion-choice:hover,
+.promotion-choice:focus-visible {
+  background: rgba(90, 98, 112, 0.95);
+  transform: translateY(-2px);
+}
+
+.promotion-choice img {
+  width: 100%;
+  max-width: 52px;
+  height: auto;
+  pointer-events: none;
+}
+
+.promotion-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: rgba(226, 232, 240, 0.72);
 }

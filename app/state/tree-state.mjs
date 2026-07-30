@@ -1,8 +1,18 @@
-export function createTreeNode({ id, fen, moveUci = null, parentId = null, clockWhite = null, clockBlack = null }) {
+export function createTreeNode({
+	id,
+	fen,
+	moveUci = null,
+	moveSan = null,
+	parentId = null,
+	clockWhite = null,
+	clockBlack = null,
+}) {
 	return {
 		id,
 		fen,
 		moveUci,
+		// Standard algebraic notation for display ("Nf3"); falls back to UCI.
+		moveSan: moveSan || moveUci,
 		parentId,
 		children: [],
 		preferredChildId: null,
@@ -78,7 +88,14 @@ export function initializeMoveTreeFromLine(state, startFen, lineMoves, clockTime
 
 	for (let index = 0; index < lineMoves.length; index += 1) {
 		const uci = lineMoves[index];
-		const applied = game.move(uciToMoveObject(uci));
+		let applied = null;
+		try {
+			// chess.js throws on a move it cannot play; stop replaying there
+			// rather than tearing down the whole import.
+			applied = game.move(uciToMoveObject(uci));
+		} catch {
+			break;
+		}
 		if (!applied) {
 			break;
 		}
@@ -89,6 +106,7 @@ export function initializeMoveTreeFromLine(state, startFen, lineMoves, clockTime
 			id: nodeId,
 			fen: game.fen(),
 			moveUci: uci,
+			moveSan: applied.san || uci,
 			parentId: cursor.id,
 			clockWhite: clockTimeline?.[index + 1]?.white || null,
 			clockBlack: clockTimeline?.[index + 1]?.black || null,

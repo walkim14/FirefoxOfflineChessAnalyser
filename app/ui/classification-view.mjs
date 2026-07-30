@@ -88,23 +88,28 @@ export function updateClassificationView(refs, result, classIcons) {
 		`Eval played: ${playedCp}`,
 	];
 
-	for (const note of result.notes) {
+	for (const note of result.notes || []) {
 		rows.push(note);
 	}
 
-	refs.classificationMeta.innerHTML = rows.map((row) => `<div class="line-item">${row}</div>`).join("");
+	refs.classificationMeta.innerHTML = rows
+		.map((row) => `<div class="line-item">${escapeHtml(row)}</div>`)
+		.join("");
 }
 
 export function updateEngineLinesView(refs, analysis, expectedWhitePercent) {
-	if (!analysis || analysis.lines.length === 0) {
-		refs.engineLines.innerHTML = "<div class='line-item'>No line yet.</div>";
+	if (!analysis || !analysis.lines || analysis.lines.length === 0) {
+		refs.engineLines.innerHTML = analysis?.terminal
+			? `<div class='line-item'>Game over: ${escapeHtml(analysis.terminal)}.</div>`
+			: "<div class='line-item'>No line yet.</div>";
 		return;
 	}
 
 	refs.engineLines.innerHTML = analysis.lines
 		.map((line) => {
 			const whiteWin = expectedWhitePercent(line.cpWhite).toFixed(1);
-			return `<div class="line-item">#${line.multipv} ${line.move} | eval ${line.evalText} | white win ${whiteWin}%<br>${line.pv}</div>`;
+			const head = `#${line.multipv} ${line.move} | eval ${line.evalText} | white win ${whiteWin}%`;
+			return `<div class="line-item">${escapeHtml(head)}<br>${escapeHtml(line.pv)}</div>`;
 		})
 		.join("");
 }
@@ -177,8 +182,9 @@ export function renderOverview({ refs, state, Chess, getTreeNode, classIcons, cl
 
 	const whiteAcc = buckets.white.counted ? (buckets.white.totalAccuracy / buckets.white.counted).toFixed(1) : "-";
 	const blackAcc = buckets.black.counted ? (buckets.black.totalAccuracy / buckets.black.counted).toFixed(1) : "-";
-	const whiteName = state.players.whiteName || "White";
-	const blackName = state.players.blackName || "Black";
+	// Player names come straight from PGN headers, so they are untrusted markup.
+	const whiteName = escapeHtml(state.players.whiteName || "White");
+	const blackName = escapeHtml(state.players.blackName || "Black");
 	refs.overviewWhite.innerHTML = `
 		<div class="overview-player">
 			<div class="overview-name">${whiteName}</div>
