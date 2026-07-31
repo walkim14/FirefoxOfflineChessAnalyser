@@ -290,19 +290,47 @@ function isLegalMoveIn(game, uci) {
 		.some((move) => `${move.from}${move.to}${move.promotion || ""}` === uci);
 }
 
-function bestMoveForDisplayedPly() {
-	// Read the position through chess.js so the lookup uses the same normalised
-	// FEN the cache is keyed on; a raw PGN/FEN-tag string can differ textually.
-	const game = gameAtPly(state.currentPly);
-	const currentFen = game.fen();
-
-	const cached = getCachedAnalysis(currentFen, state.settings.depth, state.settings.multiPV, true);
+/**
+ * Best move the engine knows for `game`, or null.
+ *
+ * Reads the position through chess.js so the lookup uses the same normalised
+ * FEN the cache is keyed on; a raw PGN/FEN-tag string can differ textually. A
+ * candidate that is not legal here belongs to another ply and is discarded.
+ */
+function bestMoveKnownFor(game) {
+	const fen = game.fen();
+	const cached = getCachedAnalysis(fen, state.settings.depth, state.settings.multiPV, true);
 	const candidate = cached?.analysis?.bestMove
-		|| (state.latestBestMoveFen === currentFen ? state.latestBestMove : null);
+		|| (state.latestBestMoveFen === fen ? state.latestBestMove : null);
 
-	// An arrow that is not playable in the position on the board belongs to some
-	// other ply. Drawing nothing is better than pointing somewhere wrong.
 	return isLegalMoveIn(game, candidate) ? candidate : null;
+}
+
+/**
+ * The arrow answers "what was the best move at this ply?" — the same comparison
+ * the Move Classification panel makes — so it comes from the position the
+ * current move was played from, not from the position on the board.
+ */
+function bestMoveForDisplayedPly() {
+	// Nothing has been played yet at the root, so the best move at this ply is
+	// simply the best move from here.
+	if (state.currentPly <= 0) {
+		return bestMoveKnownFor(gameAtPly(0));
+	}
+
+	const parentGame = gameAtPly(state.currentPly - 1);
+	const classification = state.moveClassifications[state.currentPly - 1];
+	const candidate = isLegalMoveIn(parentGame, classification?.bestMove)
+		? classification.bestMove
+		: bestMoveKnownFor(parentGame);
+
+	// When the played move already was the best one, the board tag says so and
+	// an arrow retracing it adds nothing.
+	if (!candidate || candidate === state.lineMoves[state.currentPly - 1]) {
+		return null;
+	}
+
+	return candidate;
 }
 
 function squareCenterOnOverlay(square) {

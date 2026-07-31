@@ -1,5 +1,7 @@
-// The best-move arrow must always describe the position on the board right
-// now, never a neighbouring ply's analysis.
+// The best-move arrow shows the best move *at* the current ply: the strongest
+// alternative to the move being reviewed, taken from the position that move was
+// played from. It must never show some other ply's analysis, and it must agree
+// with the "Best move:" line in the Move Classification panel.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -18,6 +20,9 @@ const SHORT_PGN = `[Event "Test"]
 [Result "*"]
 
 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *`;
+
+/** The mainline above, ply by ply, in UCI. */
+const MAINLINE_UCI = ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6"];
 
 /**
  * Answers with a move that is unique to the position it was asked about, so a
@@ -99,6 +104,8 @@ async function bootPage() {
 	const dom = new JSDOM(html, { url: "https://example.invalid/analyzer.html", pretendToBeVisual: true });
 	const { window } = dom;
 	const storage = {};
+	const errors = [];
+	window.addEventListener("error", (event) => errors.push(event.error || event.message));
 
 	window.chrome = {
 		runtime: { getURL: (path) => `moz-extension://test/${path}`, lastError: null },
@@ -141,6 +148,7 @@ async function bootPage() {
 	return {
 		window,
 		document: window.document,
+		errors,
 		settle,
 		arrow: () => window.document.getElementById("board-overlay").getAttribute("data-best-move"),
 		/** FEN the board is actually showing, read back from the rendered squares. */
@@ -188,22 +196,49 @@ async function waitForScan(page, timeoutMs = 8000) {
 	throw new Error("the whole-game scan never finished");
 }
 
-/** The arrow must start from a piece that is actually on the board. */
-function assertArrowIsLegalHere(page, expectedFen, context) {
-	const arrow = page.arrow();
-	assert.ok(arrow, `no arrow drawn ${context}`);
-
-	const legal = new Chess(expectedFen)
-		.moves({ verbose: true })
-		.map((move) => `${move.from}${move.to}${move.promotion || ""}`);
-	assert.ok(
-		legal.includes(arrow),
-		`${context}: arrow ${arrow} is not a legal move in the displayed position (${expectedFen})`,
-	);
-	assert.equal(arrow, bestMoveFor(expectedFen), `${context}: arrow must be this position's best move`);
+/** Replays SAN from the start and returns the FEN after each listed move. */
+function fenAfter(sanMoves) {
+	const game = new Chess();
+	for (const san of sanMoves) {
+		game.move(san);
+	}
+	return game.fen();
 }
 
-test("the arrow matches the current ply after a whole-game scan", async () => {
+function legalUcisIn(fen) {
+	return new Chess(fen).moves({ verbose: true }).map((move) => `${move.from}${move.to}${move.promotion || ""}`);
+}
+
+/**
+ * The arrow shows the best move *at* the current ply, so it is measured against
+ * the position that ply's move was played from — the same comparison the
+ * classification panel makes. When the played move already was best, there is
+ * nothing to suggest and no arrow is drawn.
+ */
+function assertArrowIsBestAtPly(page, { fenBefore, playedUci }, context) {
+	const arrow = page.arrow();
+	const expected = bestMoveFor(fenBefore);
+
+	if (expected === playedUci) {
+		assert.equal(arrow, null, `${context}: the played move was best, so no arrow belongs here`);
+		return;
+	}
+
+	assert.ok(arrow, `no arrow drawn ${context}`);
+	assert.equal(arrow, expected, `${context}: arrow must be the best move at this ply`);
+	assert.ok(
+		legalUcisIn(fenBefore).includes(arrow),
+		`${context}: arrow ${arrow} is not legal in the position this ply was played from`,
+	);
+}
+
+/** At the root there is no played move, so the arrow is simply the best move here. */
+function assertArrowIsBestFromHere(page, fen, context) {
+	const arrow = page.arrow();
+	assert.equal(arrow, bestMoveFor(fen), `${context}: arrow must be the best move from the displayed position`);
+}
+
+test("the root ply shows the best move from the starting position", async () => {
 	const page = await bootPage();
 	try {
 		page.document.getElementById("pgn-input").value = SHORT_PGN;
@@ -212,13 +247,13 @@ test("the arrow matches the current ply after a whole-game scan", async () => {
 
 		// Loading parks the board at the start; the scan restores that ply.
 		assert.equal(page.document.getElementById("scrubber-label").textContent, "Move 0 / 6");
-		assertArrowIsLegalHere(page, new Chess().fen(), "at the start of the scanned game");
+		assertArrowIsBestFromHere(page, new Chess().fen(), "at the start of the scanned game");
 	} finally {
 		page.restore();
 	}
 });
 
-test("the arrow follows navigation to an earlier ply", async () => {
+test("the arrow follows navigation and reports that ply's best move", async () => {
 	const page = await bootPage();
 	try {
 		page.document.getElementById("pgn-input").value = SHORT_PGN;
@@ -228,17 +263,17 @@ test("the arrow follows navigation to an earlier ply", async () => {
 		click(page, "#move-list button[data-ply='3']");
 		await page.settle(400);
 
-		const game = new Chess();
-		for (const san of ["e4", "e5", "Nf3"]) {
-			game.move(san);
-		}
-		assertArrowIsLegalHere(page, game.fen(), "after seeking to ply 3");
+		assertArrowIsBestAtPly(
+			page,
+			{ fenBefore: fenAfter(["e4", "e5"]), playedUci: "g1f3" },
+			"after seeking to ply 3",
+		);
 	} finally {
 		page.restore();
 	}
 });
 
-test("the arrow describes the sideline position, not the ply it branched from", async () => {
+test("a played sideline move is measured against the position it branched from", async () => {
 	const page = await bootPage();
 	try {
 		page.document.getElementById("pgn-input").value = SHORT_PGN;
@@ -253,11 +288,11 @@ test("the arrow describes the sideline position, not the ply it branched from", 
 		click(page, "#board .square[data-square='c4']");
 		await page.settle(800);
 
-		const game = new Chess();
-		for (const san of ["e4", "e5", "Bc4"]) {
-			game.move(san);
-		}
-		assertArrowIsLegalHere(page, game.fen(), "on the played sideline");
+		assertArrowIsBestAtPly(
+			page,
+			{ fenBefore: fenAfter(["e4", "e5"]), playedUci: "f1c4" },
+			"on the played sideline",
+		);
 	} finally {
 		page.restore();
 	}
@@ -283,21 +318,21 @@ test("the arrow keeps up while walking deeper into a sideline", async () => {
 		click(page, "#board .square[data-square='f6']");
 		await page.settle(800);
 
-		const game = new Chess();
-		for (const san of ["e4", "e5", "Bc4", "Nf6"]) {
-			game.move(san);
-		}
-		assertArrowIsLegalHere(page, game.fen(), "two plies into the sideline");
+		assertArrowIsBestAtPly(
+			page,
+			{ fenBefore: fenAfter(["e4", "e5", "Bc4"]), playedUci: "g8f6" },
+			"two plies into the sideline",
+		);
 
 		// And stepping back up the sideline re-points it.
 		page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
 		await page.settle(600);
 
-		const parent = new Chess();
-		for (const san of ["e4", "e5", "Bc4"]) {
-			parent.move(san);
-		}
-		assertArrowIsLegalHere(page, parent.fen(), "after stepping back one ply in the sideline");
+		assertArrowIsBestAtPly(
+			page,
+			{ fenBefore: fenAfter(["e4", "e5"]), playedUci: "f1c4" },
+			"after stepping back one ply in the sideline",
+		);
 	} finally {
 		page.restore();
 	}
@@ -318,11 +353,11 @@ test("branching while the scan is still running still points at the sideline", a
 		click(page, "#board .square[data-square='c4']");
 		await page.settle(1200);
 
-		const game = new Chess();
-		for (const san of ["e4", "e5", "Bc4"]) {
-			game.move(san);
-		}
-		assertArrowIsLegalHere(page, game.fen(), "branching out of a running scan");
+		assertArrowIsBestAtPly(
+			page,
+			{ fenBefore: fenAfter(["e4", "e5"]), playedUci: "f1c4" },
+			"branching out of a running scan",
+		);
 	} finally {
 		page.restore();
 	}
@@ -346,11 +381,55 @@ test("two sideline moves in quick succession leave the arrow on the last one", a
 		click(page, "#board .square[data-square='f6']");
 		await page.settle(1500);
 
-		const game = new Chess();
-		for (const san of ["e4", "e5", "Bc4", "Nf6"]) {
-			game.move(san);
+		assertArrowIsBestAtPly(
+			page,
+			{ fenBefore: fenAfter(["e4", "e5", "Bc4"]), playedUci: "g8f6" },
+			"after two quick sideline moves",
+		);
+	} finally {
+		page.restore();
+	}
+});
+
+test("the arrow agrees with the Best move line in the classification panel", async () => {
+	const page = await bootPage();
+	try {
+		page.document.getElementById("pgn-input").value = SHORT_PGN;
+		click(page, "#load-pgn-btn");
+		await waitForScan(page);
+
+		const panelBestMove = () => {
+			const rows = [...page.document.querySelectorAll("#classification-meta .line-item")]
+				.map((row) => row.textContent.trim());
+			const row = rows.find((text) => text.startsWith("Best move:"));
+			return row ? row.replace("Best move:", "").trim() : null;
+		};
+
+		// Walk every ply of the game; the two readouts must never disagree.
+		for (let ply = 1; ply <= 6; ply += 1) {
+			click(page, `#move-list button[data-ply='${ply}']`);
+			await page.settle(400);
+
+			const panel = panelBestMove();
+			assert.ok(panel && panel !== "n/a", `ply ${ply}: the panel should know the best move`);
+
+			const played = page.document
+				.querySelector("#move-list .move-item.current .move-item-text")
+				.textContent.trim();
+			const arrow = page.arrow();
+
+			if (arrow === null) {
+				// Suppressed only because the played move already was the best one.
+				assert.equal(
+					panel,
+					MAINLINE_UCI[ply - 1],
+					`ply ${ply} (${played}): arrow hidden although the played move was not best`,
+				);
+			} else {
+				assert.equal(arrow, panel, `ply ${ply} (${played}): arrow and panel disagree`);
+			}
 		}
-		assertArrowIsLegalHere(page, game.fen(), "after two quick sideline moves");
+		assert.equal(page.errors.length, 0, `page errors: ${page.errors.join(", ")}`);
 	} finally {
 		page.restore();
 	}

@@ -62,6 +62,20 @@ classifier own the engine while they run, and both re-schedule a position analys
 Any user navigation (arrow keys, move list, scrubber, tree jump, or playing a move) cancels a running
 scan so it cannot move the board out from under the click.
 
+### Best-Move Arrow
+
+The arrow answers *"what was the best move at this ply?"* — the strongest alternative to the move you
+are looking at — so it is computed from the position that move was played from, exactly like the
+`Best move:` line in the Move Classification panel. The two can never disagree.
+
+- At the root there is no played move, so the arrow shows the best move from the position on the board.
+- When the played move already was the best one, no arrow is drawn; the board tag already says so.
+- A candidate that is not legal in the position it is measured against is discarded rather than drawn,
+  so an arrow belonging to another ply can never reach the screen.
+
+Note that this is review framing, not exploration framing: the arrow tells you what should have been
+played, not what to play next. It therefore can start from a square the played move has since vacated.
+
 ### Move Tree
 
 The tree renders a reference spine — the loaded PGN mainline, or the first line played when starting
