@@ -34,6 +34,8 @@ export class EnginePool {
 		this.logger = logger;
 		this.clients = [];
 		this.runToken = 0;
+		/** The in-flight run's settlers, so a superseded run can be closed out. */
+		this.pending = null;
 	}
 
 	get started() {
@@ -78,11 +80,18 @@ export class EnginePool {
 	 * @param {(job, result, index) => Promise<object>|object} analyze runs one job on one client
 	 */
 	run(jobs, analyze) {
-		const settlers = [];
+		const settlers = jobs.map(() => ({ settled: false, resolve: null, reject: null }));
 		const promises = jobs.map(
 			(_, index) =>
 				new Promise((resolve, reject) => {
-					settlers[index] = { resolve, reject };
+					settlers[index].resolve = (value) => {
+						settlers[index].settled = true;
+						resolve(value);
+					};
+					settlers[index].reject = (error) => {
+						settlers[index].settled = true;
+						reject(error);
+					};
 				}),
 		);
 		// A cancelled run leaves promises nobody is waiting on; mark them handled
@@ -91,7 +100,12 @@ export class EnginePool {
 			promise.catch(() => {});
 		}
 
+		// Superseding a run must not leave its caller awaiting promises that can
+		// never settle: the lanes of the old run stop the moment the token moves.
+		this.abandonPending("Canceled by newer request.");
+
 		const token = ++this.runToken;
+		this.pending = { settlers };
 		let next = 0;
 
 		const lane = async (client) => {
@@ -117,9 +131,24 @@ export class EnginePool {
 		return promises;
 	}
 
+	/** Rejects whatever the current run never got to, so no caller waits forever. */
+	abandonPending(message) {
+		const pending = this.pending;
+		this.pending = null;
+		if (!pending) {
+			return;
+		}
+		for (const settler of pending.settlers) {
+			if (!settler.settled) {
+				settler.reject(new Error(message));
+			}
+		}
+	}
+
 	/** Abandons the current run; queued jobs never start. */
 	cancel(message = "Canceled by newer request.") {
 		this.runToken += 1;
+		this.abandonPending(message);
 		for (const client of this.clients) {
 			client.cancelAll(message);
 		}
@@ -127,6 +156,7 @@ export class EnginePool {
 
 	dispose() {
 		this.runToken += 1;
+		this.abandonPending("Engine pool disposed.");
 		for (const client of this.clients) {
 			client.dispose();
 		}

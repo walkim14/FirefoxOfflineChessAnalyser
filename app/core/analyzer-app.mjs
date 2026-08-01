@@ -33,6 +33,7 @@ import {
 import {
 	CLASS_ICONS,
 	DEFAULT_SETTINGS,
+	EXPLORER_MIN_INTERVAL_MS,
 	INITIAL_FEN,
 	REVIEW_PLAYBACK_DELAY_MS,
 	SCAN_PLAYBACK_DELAY_MS,
@@ -43,6 +44,9 @@ import { getReferenceMainlineNodeIds, renderMoveTree } from "../ui/tree-renderer
 import { initCollapsiblePanels } from "../ui/collapsible-panels.mjs";
 import { createAnalysisController } from "./controllers/analysis-controller.mjs";
 import { createGameplayController } from "./controllers/gameplay-controller.mjs";
+import { createTrapController } from "./controllers/trap-controller.mjs";
+import { LichessExplorerClient } from "../traps/explorer-client.mjs";
+import { createExplorerCache } from "../traps/explorer-cache.mjs";
 
 const state = {
 	startFen: INITIAL_FEN,
@@ -91,6 +95,7 @@ const state = {
 	treeExpandedParents: new Set(),
 	annotationDialogNodeId: null,
 	promotionPending: false,
+	trapResult: null,
 };
 
 const refs = getDomRefs();
@@ -657,6 +662,7 @@ async function loadSettings() {
 	syncEvalModeButton();
 	applyBoardTheme();
 	syncSidebarState();
+	trapController.syncTrapControls();
 }
 
 function loadPgnFromInput() {
@@ -834,6 +840,20 @@ const analysisController = createAnalysisController({
 	updateEngineLinesView,
 });
 
+// Opening statistics change over months, so a cached position stays good for
+// weeks. This is what keeps repeated trap searches from costing Lichess
+// anything at all.
+const explorerCache = createExplorerCache({ storageGet, storageSet });
+
+const explorer = new LichessExplorerClient({
+	fetchImpl: (...args) => globalThis.fetch(...args),
+	// Read at call time, so a token pasted into the panel works immediately.
+	getToken: () => state.settings.lichessToken,
+	cache: explorerCache,
+	minIntervalMs: EXPLORER_MIN_INTERVAL_MS,
+	logger: (message, payload) => debugLog(message, payload),
+});
+
 const gameplayController = createGameplayController({
 	state,
 	Chess,
@@ -859,6 +879,23 @@ const gameplayController = createGameplayController({
 	requestPromotionChoice,
 	setStatus,
 	debugLog,
+});
+
+const trapController = createTrapController({
+	state,
+	refs,
+	Chess,
+	enginePool,
+	explorer,
+	explorerCache,
+	dispatchPositions: (params) => analysisController.dispatchPositions(params),
+	getScanProfile,
+	cancelMainlineScan,
+	gameAtPly,
+	playMoveAtCurrentPly,
+	setStatus,
+	debugLog,
+	saveSettings,
 });
 
 function clearCaches() {
@@ -1293,6 +1330,32 @@ function bindEvents() {
 		refs.evalModeBtn.addEventListener("click", toggleEvalSidebarMode);
 	}
 	refs.resetBtn.addEventListener("click", resetLine);
+	if (refs.findTrapsBtn) {
+		refs.findTrapsBtn.addEventListener("click", () => {
+			trapController.findTrapsFromBoard().catch((error) => {
+				debugLog("Trap search crashed", String(error?.message || error));
+			});
+		});
+	}
+	if (refs.cancelTrapsBtn) {
+		refs.cancelTrapsBtn.addEventListener("click", () => {
+			trapController.cancelTrapSearch();
+		});
+	}
+	if (refs.clearTrapCacheBtn) {
+		refs.clearTrapCacheBtn.addEventListener("click", () => {
+			trapController.clearTrapCache().catch((error) => {
+				debugLog("Clearing the explorer cache failed", String(error?.message || error));
+			});
+		});
+	}
+	// The token is worth keeping the moment it is pasted, so a search does not
+	// have to be started before it is stored.
+	if (refs.trapTokenInput) {
+		refs.trapTokenInput.addEventListener("change", () => {
+			trapController.readTrapControls();
+		});
+	}
 	document.addEventListener("keydown", onGlobalKeyDown);
 }
 

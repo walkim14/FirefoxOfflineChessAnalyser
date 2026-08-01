@@ -54,5 +54,15 @@ export function getDomRefs() {
 		annotationCancelBtn: document.getElementById("annotation-cancel-btn"),
 		promotionModal: document.getElementById("promotion-modal"),
 		promotionChoices: document.getElementById("promotion-choices"),
+		trapRatingSelect: document.getElementById("trap-rating-select"),
+		trapSpeedSelect: document.getElementById("trap-speed-select"),
+		trapSeveritySelect: document.getElementById("trap-severity-select"),
+		trapBudgetInput: document.getElementById("trap-budget-input"),
+		trapTokenInput: document.getElementById("trap-token-input"),
+		findTrapsBtn: document.getElementById("find-traps-btn"),
+		cancelTrapsBtn: document.getElementById("cancel-traps-btn"),
+		clearTrapCacheBtn: document.getElementById("clear-trap-cache-btn"),
+		trapStatus: document.getElementById("trap-status"),
+		trapResults: document.getElementById("trap-results"),
 	};
 }

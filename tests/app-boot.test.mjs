@@ -1,19 +1,9 @@
-// Boots the real `analyzer.html` + `analyzer-app.mjs` in jsdom against a fake
-// Stockfish worker. This is the closest thing to loading the extension page:
-// it catches broken DOM wiring, missing element ids and runtime errors that
-// unit tests over the controllers cannot see.
+// Drives the real analyzer page the way a user does. The jsdom harness lives in
+// `tests/helpers/analyzer-page.mjs`, which boots the same HTML and app module
+// the extension itself loads.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import { createRequire } from "node:module";
-import { JSDOM } from "jsdom";
-
-const require = createRequire(import.meta.url);
-const { Chess } = require("chess.js");
-const here = dirname(fileURLToPath(import.meta.url));
-const appDir = join(here, "..", "app");
+import { bootAnalyzerPage, FakeStockfishWorker, id } from "./helpers/analyzer-page.mjs";
 
 const SHORT_PGN = `[Event "Test"]
 [White "Alice"]
@@ -23,143 +13,6 @@ const SHORT_PGN = `[Event "Test"]
 [Result "*"]
 
 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *`;
-
-/** A worker that answers every search instantly with a plausible line. */
-class FakeStockfishWorker {
-	constructor() {
-		this.onmessage = null;
-		this.onerror = null;
-		this.searching = false;
-		this.commands = [];
-		FakeStockfishWorker.instances.push(this);
-	}
-
-	postMessage(command) {
-		this.commands.push(command);
-		if (command === "uci") {
-			this.emit("uciok");
-			return;
-		}
-		if (command === "isready") {
-			this.emit("readyok");
-			return;
-		}
-		if (command.startsWith("position fen ")) {
-			this.fen = command.slice("position fen ".length);
-			return;
-		}
-		if (/^go\b/.test(command)) {
-			this.searching = true;
-			queueMicrotask(() => this.finish());
-			return;
-		}
-		if (command === "stop" && this.searching) {
-			this.finish();
-		}
-	}
-
-	finish() {
-		if (!this.searching) {
-			return;
-		}
-		this.searching = false;
-
-		let move = "e2e4";
-		try {
-			const moves = new Chess(this.fen).moves({ verbose: true });
-			if (moves.length === 0) {
-				this.emit("bestmove (none)");
-				return;
-			}
-			move = `${moves[0].from}${moves[0].to}${moves[0].promotion || ""}`;
-		} catch {
-			// Fall back to the placeholder move.
-		}
-
-		this.emit(`info depth 12 seldepth 14 multipv 1 score cp 24 nodes 1000 nps 50000 pv ${move}`);
-		this.emit(`bestmove ${move}`);
-	}
-
-	emit(line) {
-		if (this.onmessage) {
-			this.onmessage({ data: line });
-		}
-	}
-
-	terminate() {}
-}
-
-FakeStockfishWorker.instances = [];
-
-async function bootAnalyzerPage() {
-	const html = readFileSync(join(appDir, "analyzer.html"), "utf8");
-	const dom = new JSDOM(html, { url: "https://example.invalid/analyzer.html", pretendToBeVisual: true });
-	const { window } = dom;
-
-	const storage = {};
-	const errors = [];
-
-	FakeStockfishWorker.instances.length = 0;
-	window.Worker = FakeStockfishWorker;
-	window.chrome = {
-		runtime: { getURL: (path) => `moz-extension://test/${path}`, lastError: null },
-		storage: {
-			local: {
-				get(key, callback) {
-					const result = key in storage ? { [key]: storage[key] } : {};
-					callback(result);
-				},
-				set(value, callback) {
-					Object.assign(storage, value);
-					callback();
-				},
-			},
-		},
-	};
-
-	// The app module reads these off the global scope, not off `window`.
-	const previous = {
-		document: globalThis.document,
-		window: globalThis.window,
-		chrome: globalThis.chrome,
-		Worker: globalThis.Worker,
-		HTMLElement: globalThis.HTMLElement,
-		location: Object.getOwnPropertyDescriptor(globalThis, "location"),
-	};
-
-	globalThis.document = window.document;
-	globalThis.window = window;
-	globalThis.chrome = window.chrome;
-	globalThis.Worker = FakeStockfishWorker;
-	globalThis.HTMLElement = window.HTMLElement;
-	Object.defineProperty(globalThis, "location", { value: window.location, configurable: true, writable: true });
-
-	window.addEventListener("error", (event) => errors.push(event.error || event.message));
-
-	// Cache-bust so each test gets a fresh module instance with fresh state.
-	const app = await import(`../app/core/analyzer-app.mjs?boot=${FakeStockfishWorker.instances.length}-${Math.random()}`);
-	await app.bootstrapAnalyzerApp();
-
-	const restore = () => {
-		globalThis.document = previous.document;
-		globalThis.window = previous.window;
-		globalThis.chrome = previous.chrome;
-		globalThis.Worker = previous.Worker;
-		globalThis.HTMLElement = previous.HTMLElement;
-		if (previous.location) {
-			Object.defineProperty(globalThis, "location", previous.location);
-		}
-		dom.window.close();
-	};
-
-	const settle = async (ms = 60) => {
-		for (let i = 0; i < 12; i += 1) {
-			await new Promise((resolve) => setTimeout(resolve, Math.max(1, Math.round(ms / 12))));
-		}
-	};
-
-	return { dom, window, document: window.document, errors, restore, settle, storage };
-}
 
 /** Navigate to a ply through the timeline scrubber; the move list is gone. */
 function seek(page, ply) {
@@ -173,8 +26,6 @@ function treeMoves(page) {
 	return [...page.document.querySelectorAll("#tree-path button[data-tree-action='jump-node']")]
 		.map((button) => button.querySelector(".tree-chip-move").textContent.trim());
 }
-
-const id = (doc, elementId) => doc.getElementById(elementId);
 
 test("the analyzer page boots, renders a board and analyses the start position", async () => {
 	const page = await bootAnalyzerPage();

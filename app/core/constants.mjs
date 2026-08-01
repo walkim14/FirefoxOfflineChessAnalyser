@@ -15,7 +15,21 @@ export const DEFAULT_SETTINGS = {
 	evalSidebarMode: "cp",
 	sidebarCollapsed: false,
 	reviewMode: false,
+	// Trap finder. The token is a free, scopeless Lichess personal access token;
+	// the explorer has required one since Lichess put it behind authentication.
+	lichessToken: "",
+	trapRatingBand: "auto",
+	trapSpeeds: "blitz,rapid",
+	trapBlunderEpLoss: 0.15,
+	trapRequestBudget: 14,
 };
+
+/**
+ * Floor on the gap between two explorer requests. Lichess asks for one request
+ * at a time; this is the polite reading of that, and the cache means a slower
+ * first run costs nothing on the runs after it.
+ */
+export const EXPLORER_MIN_INTERVAL_MS = 1200;
 
 export const CLASS_ICONS = {
 	book: "Bk",

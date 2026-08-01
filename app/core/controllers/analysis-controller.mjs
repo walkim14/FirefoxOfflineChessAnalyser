@@ -349,11 +349,12 @@ export function createAnalysisController({
 	}
 
 	/**
-	 * Evaluates every position of the line at once, spread across the engine
-	 * pool, and returns one promise per ply index. The review then walks the
-	 * board in order while later positions are still being searched.
+	 * Evaluates a batch of positions at once, spread across the engine pool, and
+	 * returns one promise per position in the order given. The review walks the
+	 * board in order while later positions are still being searched; the trap
+	 * finder awaits the whole batch.
 	 */
-	function dispatchLinePositions({ fens, depth, multiPV }) {
+	function dispatchPositions({ fens, depth, multiPV }) {
 		const jobs = fens.map((fen, index) => ({ fen, index }));
 		return enginePool.run(jobs, async (client, job) => {
 			const cached = state.positionCache.get(cacheKeyFor(job.fen, depth, multiPV));
@@ -413,7 +414,7 @@ export function createAnalysisController({
 				scanMultiPV,
 				engines: enginePool.clients.length,
 			});
-			positions = dispatchLinePositions({ fens: timeline, depth: scanDepth, multiPV: scanMultiPV });
+			positions = dispatchPositions({ fens: timeline, depth: scanDepth, multiPV: scanMultiPV });
 		} catch (error) {
 			debugLog("Review could not start", String(error?.message || error));
 			setStatus(`Review could not start: ${error?.message || error}`);
@@ -548,6 +549,7 @@ export function createAnalysisController({
 		schedulePositionAnalysis,
 		analyzeCurrentPosition,
 		getScanProfile,
+		dispatchPositions,
 		queueMoveClassification,
 		scanMainlineClassifications,
 	};

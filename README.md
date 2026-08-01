@@ -13,6 +13,8 @@ A local-first Firefox extension that opens its own analysis page (no chess.com o
 - Real opening-book classification (`Book`) using an offline ECO database.
 - MultiPV display for best candidate lines.
 - Auto-import player Elo from PGN tags (`WhiteElo` / `BlackElo`) when present.
+- **Trap finder**: moves that are sound for you and that opponents at your rating tend to answer
+  badly, found by crossing the Lichess opening explorer with the local engine. See *Trap Finder*.
 - Finished positions (checkmate, stalemate, draws) are scored from the rules instead of being sent to the engine.
 
 ## Keyboard Shortcuts
@@ -49,6 +51,11 @@ A local-first Firefox extension that opens its own analysis page (no chess.com o
 - `app/analysis-fallback.mjs`: progressively lighter retry profiles when a search times out or the worker crashes.
 - `app/move-classifier.mjs`: expected-score transform and move labels (`Book`, `Best`, `Excellent`, `Good`, `Inaccuracy`, `Mistake`, `Blunder`, plus heuristic `Great`/`Brilliant`).
 - `app/opening-book.mjs` + `app/opening-book-data.mjs`: offline ECO opening-book lookup by position and move.
+- `app/traps/trap-finder.mjs`: the trap search itself — no DOM, no network, no engine; the explorer
+  and the evaluator are injected, which is what lets the tests drive it deterministically.
+- `app/traps/explorer-client.mjs`: rate-limited, authenticated client for the Lichess opening explorer.
+- `app/traps/explorer-cache.mjs`: memory + `chrome.storage.local` cache, so repeat searches send nothing.
+- `app/core/controllers/trap-controller.mjs`: panel wiring, engine-pool hand-off, cancellation.
 - `engine/*`: local Stockfish WASM files.
 - `vendor/chess.js`: local chess rules/parser library (ES module).
 
@@ -149,7 +156,63 @@ ends, so idle memory is unchanged.
 Combined with the cheaper review profile, a whole-game review went from roughly 4.3 s per move to
 well under half a second.
 
-### Move Tree### Move Tree
+### Trap Finder
+
+A trap has two halves, and neither is visible from one source alone. The engine knows which replies
+are objectively losing but has no idea which of them anyone would ever play. The opening explorer
+knows exactly which replies humans at a given rating choose but has no idea which of them are bad.
+Intersect the two and what is left is the thing worth learning: **a reply that is both popular and
+losing**.
+
+That is the whole design, and it is why no scraping is involved. One explorer request returns the
+aggregated move distribution over millions of games at a chosen rating band and time control, so a
+search costs a handful of requests rather than a download of anybody's game archive.
+
+For the position on the board, the finder:
+
+1. asks the explorer which moves are actually played here, and takes the most common as candidates;
+2. asks the explorer, once per candidate, how the opponent pool replies to it;
+3. evaluates the whole tree in one batch across the engine pool;
+4. keeps candidates that are sound for you and that a meaningful share of opponents answer badly.
+
+Expected points are zero-sum, so what the opponent gives up on a reply is exactly what you pick up;
+the two are the same number and are only computed once. Each candidate is scored by
+**expected gain = Σ (share of opponents playing the reply × expected score that reply throws away)**,
+shrunk toward zero for thin samples so a 20-game line cannot outrank a 20,000-game one on a fluke.
+The panel also reports how the side setting the trap has *actually* scored after each losing reply,
+which is independent corroboration that the engine's verdict shows up on the scoreboard.
+
+Clicking a move plays it on the board, so the line can be explored — or searched again one move
+deeper.
+
+#### The token
+
+The explorer required no login until it was hit by request floods in early 2026; it now answers
+`401` without one. So the panel needs a free **Lichess personal access token**, created at
+`lichess.org/account/oauth/token` with **no scopes ticked**. It is stored in `chrome.storage.local`
+alongside the other settings and sent only to `explorer.lichess.org`.
+
+#### Not getting banned
+
+Lichess pays for the aggregation this feature reads, and the explorer has already been taken down
+once by request floods. The client is therefore built to be a good citizen first and fast second:
+
+- **One request in flight, ever.** Every call joins a single promise chain.
+- **A floor of 1.2 s between requests** (`EXPLORER_MIN_INTERVAL_MS`).
+- **A 429 stops the search.** Lichess asks for a full minute of silence afterwards, so the client
+  records the cooldown, refuses to send anything until it expires, and does *not* retry. Partial
+  results are kept and shown.
+- **A hard request budget per search**, default 14 and visible in the panel.
+- **The smallest useful response**: `topGames` and `recentGames` are pinned to `0`, because game
+  references are the expensive half of the payload and the search never reads them.
+- **Everything is cached**, in memory and on disk, keyed by position with the move counters stripped
+  so transpositions hit the same entry. Entries live 30 days. A second search over the same opening
+  sends nothing at all.
+
+A fresh search from a common position costs about **11 requests and 15 seconds**; the same search
+again costs **none**.
+
+### Move Tree
 
 The tree renders a reference spine — the loaded PGN mainline, or the first line played when starting
 from a FEN — with every alternative shown as an indented variation beneath the move it branches from.
@@ -199,6 +262,8 @@ Move classification compares expected score for the mover:
 4. Click a piece then a target square to make an alternative move; pawn promotions open a piece picker.
 5. Review live analysis lines and move classification.
 6. Tune depth/MultiPV/hash/Elo, then click **Apply Engine Settings**.
+7. To hunt traps, open **Trap finder**, paste a Lichess token once, navigate to the position you
+   want to prepare, and click **Find traps**. See *Trap Finder* above.
 
 ## Testing
 
@@ -214,6 +279,12 @@ The suite runs on Node's built-in test runner and needs no browser:
 - `tests/live-moves.test.mjs` wires the real controllers headlessly to cover branching, classification and
   scan takeover.
 - `tests/stockfish-client.test.mjs` drives the UCI client through a mock worker, including search cancellation.
+- `tests/trap-finder.test.mjs` drives the trap search over a scripted explorer and engine, covering
+  ranking, the soundness filter, sample-size shrinkage, the request budget and the rate-limit path.
+- `tests/explorer-client.test.mjs` covers the request floor, the 429 cooldown, the token handling and
+  the cache, all against a fake clock so nothing waits on real time.
+- `tests/trap-panel.test.mjs` drives the panel through the real page with only the network replaced.
+- `tests/engine-pool.test.mjs` covers job settlement, including a run superseded mid-flight.
 - The remaining files cover PGN parsing, the opening book, classification and the fallback profiles.
 
 ## Notes

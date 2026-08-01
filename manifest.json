@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "description": "Local chess analysis with Stockfish WASM, PGN import, and interactive what-if lines.",
   "permissions": ["storage", "tabs"],
-  "host_permissions": ["https://www.chess.com/*", "https://api.chess.com/*"],
+  "host_permissions": [
+    "https://www.chess.com/*",
+    "https://api.chess.com/*",
+    "https://explorer.lichess.org/*"
+  ],
   "background": {
     "scripts": ["background/background.js"],
     "type": "module"

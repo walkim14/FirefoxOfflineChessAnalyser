@@ -140,6 +140,68 @@
           </div>
         </div>
 
+        <div id="trap-finder-card" class="card collapsible-card" data-collapsible-card>
+          <button class="card-toggle" type="button" data-collapsible-toggle aria-expanded="false" aria-controls="trap-finder-content">
+            <h2>Trap finder</h2>
+            <span class="card-toggle-icon" aria-hidden="true">▾</span>
+          </button>
+          <div id="trap-finder-content" class="card-section-content" data-collapsible-content>
+            <p class="trap-intro">
+              Finds moves that are sound for you and that players at your level tend to answer badly,
+              by crossing the Lichess opening explorer with this engine.
+            </p>
+            <div class="settings-grid">
+              <div class="setting-row">
+                <label for="trap-rating-select">Opponent rating<span class="help-slot" data-help="trap-rating"></span></label>
+                <select id="trap-rating-select">
+                  <option value="auto">Around your rating</option>
+                  <option value="0,1000">Under 1200</option>
+                  <option value="1200,1400">1200–1600</option>
+                  <option value="1600,1800">1600–2000</option>
+                  <option value="2000,2200">2000–2500</option>
+                  <option value="2500">2500+</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <label for="trap-speed-select">Time control<span class="help-slot" data-help="trap-speed"></span></label>
+                <select id="trap-speed-select">
+                  <option value="blitz,rapid">Blitz &amp; rapid</option>
+                  <option value="bullet,blitz">Bullet &amp; blitz</option>
+                  <option value="rapid,classical">Rapid &amp; classical</option>
+                  <option value="ultraBullet,bullet,blitz,rapid,classical,correspondence">All</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <label for="trap-severity-select">Mistake size<span class="help-slot" data-help="trap-severity"></span></label>
+                <select id="trap-severity-select">
+                  <option value="0.1">Slight — an inaccuracy is enough</option>
+                  <option value="0.15">Clear — a real mistake</option>
+                  <option value="0.25">Severe — close to losing</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <label for="trap-budget-input">Request budget<span class="help-slot" data-help="trap-budget"></span></label>
+                <input id="trap-budget-input" type="number" min="2" max="30" step="1" value="14" />
+              </div>
+              <div class="setting-row trap-token-row">
+                <label for="trap-token-input">Lichess API token<span class="help-slot" data-help="trap-token"></span></label>
+                <input id="trap-token-input" type="password" autocomplete="off" spellcheck="false" placeholder="lip_..." />
+              </div>
+            </div>
+            <p class="trap-token-hint">
+              The explorer needs a free token since Lichess put it behind authentication. Create one at
+              <span class="trap-token-url">lichess.org/account/oauth/token</span> with no scopes ticked.
+            </p>
+            <div class="card-actions">
+              <button id="find-traps-btn" class="primary" type="button">Find traps</button>
+              <button id="cancel-traps-btn" type="button" class="hidden">Cancel</button>
+              <button id="clear-trap-cache-btn" type="button" class="ghost">Clear cache</button>
+            </div>
+            <div id="trap-status" class="trap-status hidden" aria-live="polite"></div>
+            <div id="trap-results" class="trap-results"></div>
+          </div>
+        </div>
+
         <div class="card collapsible-card" data-collapsible-card>
           <button class="card-toggle" type="button" data-collapsible-toggle aria-expanded="true" aria-controls="move-classification-content">
             <h2>Move quality</h2>

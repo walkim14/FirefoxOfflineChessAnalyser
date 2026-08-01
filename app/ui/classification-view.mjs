@@ -256,6 +256,11 @@ export const SETTING_HELP = {
 	multipv: 'How many candidate moves the engine reports for the position on the board. More lines cost more time.',
 	hash: 'How much memory the engine may use to remember positions it has already worked out. A review shares this budget across the engines it runs in parallel.',
 	elo: 'Used to judge whether a sacrifice was worth spotting, so Brilliant and Great mean roughly the same thing at your level.',
+	traprating: 'Which players the trap statistics are drawn from. A trap is only a trap against a particular strength of opponent: what a 1400 walks into, a 2200 has seen before. "Around your rating" follows the rating set above.',
+	trapspeed: 'Which time controls the games are drawn from. Faster games contain more traps, because nobody has time to check.',
+	trapseverity: 'How badly a reply has to go wrong before it counts as falling into the trap, measured in expected score. A slighter setting finds more traps but weaker ones.',
+	trapbudget: 'The most requests one search may send to the Lichess explorer. Each candidate move costs one request, and results are cached, so repeating a search over the same opening is usually free.',
+	traptoken: 'A free Lichess personal access token. The opening explorer required no login until it was hit by request floods in early 2026; it now needs a token, though no scopes have to be granted. It is stored locally, like every other setting here.',
 };
 
 const ACCURACY_HELP =

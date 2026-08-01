@@ -66,13 +66,27 @@ class FakeWorker {
 		this.searching = false;
 
 		let moves = [];
+		let sideToMove = "w";
 		try {
-			moves = new Chess(this.fen).moves({ verbose: true });
+			const game = new Chess(this.fen);
+			sideToMove = game.turn();
+			moves = game.moves({ verbose: true });
 		} catch {
 			moves = [];
 		}
 		if (!moves.length) {
 			return this.emit("bestmove (none)");
+		}
+
+		// `--traps` needs specific evaluations rather than the hashed spread below.
+		if (FakeWorker.scores) {
+			const positionKey = this.fen.trim().split(/\s+/).slice(0, 4).join(" ");
+			const cpWhite = FakeWorker.scores[positionKey] ?? 20;
+			const move = moves[0];
+			this.emit(
+				`info depth 18 seldepth 22 multipv 1 score cp ${sideToMove === "w" ? cpWhite : -cpWhite} nodes 120000 nps 900000 pv ${move.from}${move.to}`,
+			);
+			return this.emit(`bestmove ${move.from}${move.to}`);
 		}
 
 		// Hash the position to a wide eval range so consecutive plies differ a
@@ -140,6 +154,68 @@ await app.bootstrapAnalyzerApp();
 
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
 
+// `--traps` runs a real trap search against a stubbed explorer, so the panel can
+// be looked at with results in it.
+if (args.includes("--traps")) {
+	const TRAP_ROOT = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+	const key = (fen) => String(fen).trim().split(/\s+/).slice(0, 4).join(" ");
+	const played = (fen, uci) => {
+		const game = new Chess(fen);
+		game.move({ from: uci.slice(0, 2), to: uci.slice(2, 4) });
+		return game.fen();
+	};
+	const afterBc4 = played(TRAP_ROOT, "f1c4");
+	const afterNf3 = played(TRAP_ROOT, "g1f3");
+	const split = (total) => ({ white: Math.round(total * 0.52), draws: Math.round(total * 0.08), black: total - Math.round(total * 0.52) - Math.round(total * 0.08) });
+	const mv = (uci, san, total) => ({ uci, san, ...split(total) });
+
+	const stats = {
+		[key(TRAP_ROOT)]: { ...split(184_000), opening: { eco: "C20", name: "King's Pawn Game" }, moves: [mv("g1f3", "Nf3", 96_000), mv("f1c4", "Bc4", 41_000), mv("b1c3", "Nc3", 22_000)] },
+		[key(afterBc4)]: { ...split(41_000), opening: { eco: "C23", name: "Bishop's Opening" }, moves: [mv("g8f6", "Nf6", 19_000), mv("b8c6", "Nc6", 11_000), mv("f8c5", "Bc5", 6000), mv("d7d5", "d5", 5000)] },
+		[key(afterNf3)]: { ...split(96_000), opening: { eco: "C40", name: "King's Knight Opening" }, moves: [mv("b8c6", "Nc6", 62_000), mv("d7d6", "d6", 21_000), mv("f7f6", "f6", 13_000)] },
+	};
+	const scores = {
+		[key(TRAP_ROOT)]: 28,
+		[key(afterBc4)]: 25,
+		[key(afterNf3)]: 30,
+		[key(played(afterBc4, "g8f6"))]: 20,
+		[key(played(afterBc4, "b8c6"))]: 25,
+		[key(played(afterBc4, "f8c5"))]: 30,
+		[key(played(afterBc4, "d7d5"))]: 380,
+		[key(played(afterNf3, "b8c6"))]: 30,
+		[key(played(afterNf3, "d7d6"))]: 45,
+		[key(played(afterNf3, "f7f6"))]: 260,
+	};
+
+	FakeWorker.scores = scores;
+	globalThis.fetch = async (url) => ({
+		ok: true,
+		status: 200,
+		headers: { get: () => null },
+		json: async () => stats[key(new URL(url).searchParams.get("fen"))] || { white: 0, draws: 0, black: 0, moves: [], opening: null },
+	});
+
+	window.document.getElementById("fen-input").value = TRAP_ROOT;
+	window.document.getElementById("load-fen-btn").dispatchEvent(new window.Event("click"));
+	await wait(400);
+
+	window.document.getElementById("trap-token-input").value = "lip_snapshot";
+	window.document.getElementById("find-traps-btn").dispatchEvent(new window.Event("click"));
+	for (let i = 0; i < 600; i += 1) {
+		if (window.document.querySelector("#trap-results .trap-card")) {
+			break;
+		}
+		await wait(50);
+	}
+	await wait(200);
+
+	// The panel ships collapsed; open it for the screenshot.
+	const card = window.document.getElementById("trap-finder-card");
+	card.classList.remove("collapsed");
+	card.querySelector("[data-collapsible-toggle]").setAttribute("aria-expanded", "true");
+	window.document.getElementById("side-panel").classList.remove("collapsed");
+} else {
+
 window.document.getElementById("pgn-input").value = PGN;
 window.document.getElementById("load-pgn-btn").dispatchEvent(new window.Event("click"));
 
@@ -163,6 +239,17 @@ if (mode === "ep") {
 // Sidebar starts collapsed after a PGN load; open it for the screenshot.
 const sidePanel = window.document.getElementById("side-panel");
 sidePanel.classList.remove("collapsed");
+
+}
+
+// jsdom keeps a select's choice as a property; both `cloneNode` (below, for
+// --clip) and serialising to HTML carry only the `selected` attribute, so
+// without this every dropdown screenshots as its first option.
+for (const select of window.document.querySelectorAll("select")) {
+	for (const option of select.options) {
+		option.toggleAttribute("selected", option.value === select.value);
+	}
+}
 
 const overrides = window.document.createElement("style");
 overrides.textContent = `
