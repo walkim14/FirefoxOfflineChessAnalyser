@@ -32,7 +32,6 @@ export function getDomRefs() {
 		treePath: document.getElementById("tree-path"),
 		treeChildren: document.getElementById("tree-children"),
 		engineLines: document.getElementById("engine-lines"),
-		moveList: document.getElementById("move-list"),
 		boardOverlay: document.getElementById("board-overlay"),
 		evalBlack: document.getElementById("eval-black"),
 		evalWhite: document.getElementById("eval-white"),

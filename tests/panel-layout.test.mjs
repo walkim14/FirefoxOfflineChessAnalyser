@@ -188,11 +188,31 @@ test("the game overview is not a scroll container", async () => {
 	}
 });
 
+test("the tooltip arrow points at the bubble that opened it", async () => {
+	const page = await bootWithStyles();
+	try {
+		const bubble = page.document.querySelector("#overview-breakdown .overview-row .help-bubble");
+		assert.ok(bubble, "the overview should render help bubbles");
+		const anchor = bubble.closest(".overview-row");
+
+		// jsdom does no layout, so stand in for it with known geometry.
+		anchor.getBoundingClientRect = () => ({ left: 100, top: 0, width: 300, height: 26, bottom: 26, right: 400 });
+		bubble.getBoundingClientRect = () => ({ left: 160, top: 5, width: 16, height: 16, bottom: 21, right: 176 });
+
+		bubble.dispatchEvent(new page.window.Event("pointerover", { bubbles: true }));
+
+		// 160 + 16/2 - 100 = 68 from the anchor's left edge.
+		assert.equal(anchor.style.getPropertyValue("--help-arrow-x"), "68px");
+	} finally {
+		page.restore();
+	}
+});
+
 test("no ancestor of a help bubble clips its tooltip", async () => {
 	const page = await bootWithStyles();
 	try {
-		const bubbles = [...page.document.querySelectorAll("#game-overview-content .help-bubble")];
-		assert.ok(bubbles.length > 0, "the overview should render help bubbles");
+		const bubbles = [...page.document.querySelectorAll(".help-bubble")];
+		assert.ok(bubbles.length > 0, "the page should render help bubbles");
 
 		for (const bubble of bubbles) {
 			const clippers = clippingAncestors(page.window, bubble);

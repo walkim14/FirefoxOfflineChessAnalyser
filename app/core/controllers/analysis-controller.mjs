@@ -27,7 +27,6 @@ export function createAnalysisController({
 	clearSelection,
 	renderBoard,
 	renderEvalBar,
-	updateMoveList,
 	renderMoveTreePanel,
 	render,
 	updateClassificationView,
@@ -137,13 +136,13 @@ export function createAnalysisController({
 		renderEvalBar();
 
 		if (analysis.terminal) {
-			setStatus(`Game over: ${analysis.terminal} | eval ${analysis.evalText}`);
+			setStatus(`Game over — ${analysis.terminal}`);
 			return;
 		}
 
 		const turnLabel = analysis.sideToMove === "w" ? "White" : "Black";
 		setStatus(
-			`${turnLabel} to move | eval ${analysis.evalText} | white win ${analysis.winPercentWhite.toFixed(1)}% | depth ${analysis.depthReached} | nps ${analysis.nps || 0}${suffix}`,
+			`${turnLabel} to move · ${analysis.evalText} · White scores ${analysis.winPercentWhite.toFixed(0)}% · depth ${analysis.depthReached}${suffix}`,
 		);
 	}
 
@@ -161,7 +160,7 @@ export function createAnalysisController({
 		const cached = getCachedAnalysis(fen, state.settings.depth, state.settings.multiPV, true);
 
 		if (cached?.mode === "exact") {
-			paintAnalysis(cached.analysis, " | cached");
+			paintAnalysis(cached.analysis, " · cached");
 			return;
 		}
 
@@ -169,7 +168,7 @@ export function createAnalysisController({
 			// A weaker cached result (lower depth, or the single-PV result the
 			// classifier stored) is a useful placeholder, but it must not stop
 			// the full-strength analysis from running.
-			paintAnalysis(cached.analysis, " | cached (approx)");
+			paintAnalysis(cached.analysis, " · cached");
 		} else {
 			setStatus("Analyzing current position...");
 		}
@@ -196,7 +195,7 @@ export function createAnalysisController({
 
 			const fallbackSuffix =
 				usedProfile.depth !== state.settings.depth || usedProfile.multiPV !== state.settings.multiPV
-					? ` | fallback d${usedProfile.depth}/pv${usedProfile.multiPV}`
+					? ` · reduced to depth ${usedProfile.depth}`
 					: "";
 			paintAnalysis(analysis, fallbackSuffix);
 		} catch (error) {
@@ -268,7 +267,6 @@ export function createAnalysisController({
 			}
 
 			updateClassificationView(classification);
-			updateMoveList();
 			renderMoveTreePanel();
 			renderBoard();
 			setStatus(
@@ -325,7 +323,6 @@ export function createAnalysisController({
 			setCurrentPlyOnActiveLine(ply);
 			renderBoard();
 			renderEvalBar();
-			updateMoveList();
 			renderMoveTreePanel();
 			setStatus(`Analyzing move ${ply}/${total}...`);
 			await delay(SCAN_PLAYBACK_DELAY_MS);

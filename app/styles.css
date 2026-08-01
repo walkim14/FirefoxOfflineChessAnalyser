@@ -11,6 +11,27 @@
   --board-light: #eeeed2;
   --board-dark: #769656;
   --shadow: 0 16px 34px rgba(0, 0, 0, 0.35);
+  --surface-1: rgba(255, 255, 255, 0.055);
+  --surface-2: rgba(255, 255, 255, 0.09);
+  --hairline: rgba(255, 255, 255, 0.11);
+  --focus: #8fd0ff;
+}
+
+/* One visible focus treatment for everything reachable by keyboard. */
+:where(button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 * {
@@ -339,7 +360,8 @@ body {
 .controls-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.45rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .review-toggle {
@@ -369,22 +391,39 @@ select {
   font: inherit;
 }
 
+/* Default is the quiet, surface-level control. `.primary` is spent once per
+   card on the action that card exists for. */
 button {
-  border: 0;
+  border: 1px solid var(--hairline);
   border-radius: 10px;
-  background: var(--accent);
-  color: #121417;
-  padding: 0.52rem 0.72rem;
+  background: var(--surface-1);
+  color: #e9eff6;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.46rem 0.7rem;
   cursor: pointer;
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition: background 130ms ease, border-color 130ms ease, transform 120ms ease;
 }
 
 button:hover {
-  opacity: 0.92;
+  background: var(--surface-2);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 button:active {
   transform: translateY(1px);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #131a10;
+  font-weight: 700;
+}
+
+button.primary:hover {
+  background: #8cb65b;
+  border-color: transparent;
 }
 
 button.danger {
@@ -392,10 +431,16 @@ button.danger {
   color: #fff;
 }
 
+/* A dense readout of numbers, so it gets tabular figures and its own surface. */
 .status {
-  font-size: 0.95rem;
-  color: var(--muted);
+  font-size: 0.82rem;
+  color: rgba(226, 232, 240, 0.72);
   min-height: 1.2rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(16, 19, 24, 0.34);
+  font-variant-numeric: tabular-nums;
 }
 
 .scan-progress {
@@ -537,10 +582,13 @@ button.danger {
   transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
 }
 
+/* The tooltip spans its row, so the arrow cannot simply sit at its centre.
+   `--help-arrow-x` is set to the hovered bubble's centre, measured against the
+   same anchor the tooltip is positioned in. */
 .help-tooltip::after {
   content: "";
   position: absolute;
-  left: 50%;
+  left: var(--help-arrow-x, 50%);
   top: 100%;
   transform: translateX(-50%);
   border-width: 7px 7px 0 7px;
@@ -757,13 +805,19 @@ button.ghost {
 }
 
 .side-panel .card {
-  padding: 0.8rem;
+  padding: 0.85rem 0.9rem 0.95rem;
   animation: fadeIn 260ms ease;
 }
 
+/* Every card title reads as a section label, matching the eyebrows inside the
+   overview, so the sidebar is one system rather than two. */
 .side-panel h2 {
-  margin: 0 0 0.45rem;
-  font-size: 1rem;
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.72);
 }
 
 .card-toggle {
@@ -795,7 +849,7 @@ button.ghost {
 }
 
 .card-section-content {
-  margin-top: 0.45rem;
+  margin-top: 0.6rem;
 }
 
 .collapsible-card.collapsed .card-section-content {
@@ -804,32 +858,69 @@ button.ghost {
 
 label {
   display: block;
-  margin-top: 0.35rem;
-  margin-bottom: 0.15rem;
-  font-size: 0.9rem;
-  color: var(--muted);
+  margin-top: 0.6rem;
+  margin-bottom: 0.22rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.62);
 }
 
 input,
 textarea,
 select {
   width: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--hairline);
   border-radius: 9px;
-  background: rgba(38, 41, 46, 0.82);
+  background: rgba(16, 19, 24, 0.5);
   color: var(--ink);
-  padding: 0.48rem 0.55rem;
+  font-size: 0.88rem;
+  padding: 0.44rem 0.55rem;
+  transition: border-color 130ms ease, background 130ms ease;
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(226, 232, 240, 0.34);
+}
+
+/* Settings are all numbers; tabular figures stop them shifting as they change. */
+input[type="number"] {
+  font-variant-numeric: tabular-nums;
 }
 
 textarea {
   resize: vertical;
+  min-height: 6.5rem;
+  line-height: 1.45;
 }
 
 .settings-grid {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.3rem 0.5rem;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 0.4rem 0.6rem;
   align-items: center;
+}
+
+.settings-grid label {
+  margin: 0;
+}
+
+/* Actions sit on one row at the foot of a card. */
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.card-actions button {
+  flex: 1 1 auto;
 }
 
 .pill {
@@ -887,19 +978,9 @@ textarea {
 }
 
 .meta-list,
-.lines,
-.move-list {
+.lines {
   display: grid;
   gap: 0.32rem;
-}
-
-/* Only the move list scrolls on its own, so following the current move never
-   drags the page underneath the board. Panels that host help tooltips must not
-   scroll: an overflow context clips the tooltip. */
-.move-list {
-  max-height: 20rem;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .tree-path {
@@ -1110,8 +1191,7 @@ textarea {
 }
 
 /* Classification badge carried by a move chip, matching the board tags. */
-.tree-chip-class,
-.move-item-class {
+.tree-chip-class {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1125,40 +1205,26 @@ textarea {
   background: rgba(12, 16, 22, 0.24);
 }
 
-.move-item-class {
-  margin-right: 0;
-  margin-left: 0.34rem;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.tree-chip-class.book,
-.move-item-class.book {
+.tree-chip-class.book {
   background: rgba(134, 214, 239, 0.34);
 }
 
 .tree-chip-class.best,
 .tree-chip-class.brilliant,
-.tree-chip-class.great,
-.move-item-class.best,
-.move-item-class.brilliant,
-.move-item-class.great {
+.tree-chip-class.great {
   background: rgba(29, 216, 97, 0.32);
 }
 
-.tree-chip-class.inaccuracy,
-.move-item-class.inaccuracy {
+.tree-chip-class.inaccuracy {
   background: rgba(252, 211, 77, 0.38);
 }
 
 .tree-chip-class.mistake,
-.tree-chip-class.miss,
-.move-item-class.mistake,
-.move-item-class.miss {
+.tree-chip-class.miss {
   background: rgba(252, 165, 165, 0.42);
 }
 
-.tree-chip-class.blunder,
-.move-item-class.blunder {
+.tree-chip-class.blunder {
   background: rgba(239, 68, 68, 0.48);
 }
 
@@ -1188,7 +1254,7 @@ textarea {
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(226, 232, 240, 0.62);
+  color: rgba(226, 232, 240, 0.72);
 }
 
 .overview-players {
@@ -1449,26 +1515,13 @@ textarea {
 .overview-row.mistake { --row-accent: #fca5a5; }
 .overview-row.blunder { --row-accent: #ef4444; }
 
-.line-item,
-.move-item {
-  background: rgba(49, 52, 58, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.line-item {
+  background: rgba(20, 23, 28, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 9px;
-  padding: 0.38rem 0.5rem;
-  font-size: 0.92rem;
-}
-
-.move-item.current {
-  border-color: rgba(15, 118, 110, 0.56);
-  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.4);
-}
-
-.move-item button {
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  color: var(--ink);
-  padding: 0;
+  padding: 0.38rem 0.55rem;
+  font-size: 0.88rem;
+  color: #dde4ec;
 }
 
 @keyframes piecePop {

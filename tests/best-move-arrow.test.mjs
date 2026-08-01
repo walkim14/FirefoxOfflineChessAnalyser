@@ -179,6 +179,13 @@ async function bootPage() {
 	};
 }
 
+/** Navigate to a ply through the timeline scrubber; the move list is gone. */
+function seek(page, ply) {
+	const scrubber = page.document.getElementById("timeline-scrubber");
+	scrubber.value = String(ply);
+	scrubber.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+}
+
 const click = (page, selector) =>
 	page.document.querySelector(selector).dispatchEvent(new page.window.Event("click"));
 
@@ -260,7 +267,7 @@ test("the arrow follows navigation and reports that ply's best move", async () =
 		click(page, "#load-pgn-btn");
 		await waitForScan(page);
 
-		click(page, "#move-list button[data-ply='3']");
+		seek(page, 3);
 		await page.settle(400);
 
 		assertArrowIsBestAtPly(
@@ -281,7 +288,7 @@ test("a played sideline move is measured against the position it branched from",
 		await waitForScan(page);
 
 		// Branch: 1. e4 e5 2. Bc4 instead of 2. Nf3.
-		click(page, "#move-list button[data-ply='2']");
+		seek(page, 2);
 		await page.settle(400);
 		click(page, "#board .square[data-square='f1']");
 		await page.settle(200);
@@ -305,7 +312,7 @@ test("the arrow keeps up while walking deeper into a sideline", async () => {
 		click(page, "#load-pgn-btn");
 		await waitForScan(page);
 
-		click(page, "#move-list button[data-ply='2']");
+		seek(page, 2);
 		await page.settle(400);
 		click(page, "#board .square[data-square='f1']");
 		await page.settle(200);
@@ -346,7 +353,7 @@ test("branching while the scan is still running still points at the sideline", a
 		// Deliberately do NOT wait: interrupt the scan mid-flight.
 		await page.settle(150);
 
-		click(page, "#move-list button[data-ply='2']");
+		seek(page, 2);
 		await page.settle(200);
 		click(page, "#board .square[data-square='f1']");
 		await page.settle(100);
@@ -370,7 +377,7 @@ test("two sideline moves in quick succession leave the arrow on the last one", a
 		click(page, "#load-pgn-btn");
 		await waitForScan(page);
 
-		click(page, "#move-list button[data-ply='2']");
+		seek(page, 2);
 		await page.settle(300);
 
 		// Play 2.Bc4 then 2...Nf6 without letting the first classification settle.
@@ -407,15 +414,13 @@ test("the arrow agrees with the Best move line in the classification panel", asy
 
 		// Walk every ply of the game; the two readouts must never disagree.
 		for (let ply = 1; ply <= 6; ply += 1) {
-			click(page, `#move-list button[data-ply='${ply}']`);
+			seek(page, ply);
 			await page.settle(400);
 
 			const panel = panelBestMove();
 			assert.ok(panel && panel !== "n/a", `ply ${ply}: the panel should know the best move`);
 
-			const played = page.document
-				.querySelector("#move-list .move-item.current .move-item-text")
-				.textContent.trim();
+			const played = MAINLINE_UCI[ply - 1];
 			const arrow = page.arrow();
 
 			if (arrow === null) {

@@ -417,7 +417,7 @@ function syncEvalModeButton() {
 	}
 
 	const isEpMode = state.settings.evalSidebarMode === "ep";
-	refs.evalModeBtn.textContent = isEpMode ? "Sidebar: EP" : "Sidebar: CP";
+	refs.evalModeBtn.textContent = isEpMode ? "Eval: win %" : "Eval: pawns";
 	refs.evalModeBtn.setAttribute("aria-pressed", String(isEpMode));
 }
 
@@ -426,7 +426,11 @@ function toggleEvalSidebarMode() {
 	syncEvalModeButton();
 	saveSettings();
 	renderEvalBar();
-	setStatus(state.settings.evalSidebarMode === "ep" ? "Switched to EP sidebar." : "Switched to centipawn sidebar.");
+	setStatus(
+		state.settings.evalSidebarMode === "ep"
+			? "Evaluation bar now reads expected score."
+			: "Evaluation bar now reads pawns.",
+	);
 }
 
 function renderBoardOverlay() {
@@ -544,10 +548,10 @@ function syncSidebarState() {
 
 	if (state.settings.sidebarCollapsed) {
 		refs.sidePanel.classList.add("collapsed");
-		refs.toggleSideBtn.textContent = "Show Controls";
+		refs.toggleSideBtn.textContent = "Show controls";
 	} else {
 		refs.sidePanel.classList.remove("collapsed");
-		refs.toggleSideBtn.textContent = "Hide Controls";
+		refs.toggleSideBtn.textContent = "Hide controls";
 	}
 }
 
@@ -800,7 +804,6 @@ const analysisController = createAnalysisController({
 	clearSelection,
 	renderBoard,
 	renderEvalBar,
-	updateMoveList,
 	renderMoveTreePanel,
 	render,
 	updateClassificationView,
@@ -1036,40 +1039,6 @@ function renderOverview() {
 	return renderOverviewView({ refs, state, Chess, getTreeNode: getTreeNodeState, classIcons: CLASS_ICONS, clamp });
 }
 
-function updateMoveList() {
-	if (state.lineMoves.length === 0) {
-		refs.moveList.innerHTML = "<div class='move-item'>No moves yet.</div>";
-		return;
-	}
-
-	const entries = [];
-	for (let i = 0; i < state.lineMoves.length; i += 1) {
-		const ply = i + 1;
-		const node = getTreeNode(state.activeLineNodeIds[ply]);
-		const moveText = node?.moveSan || state.lineMoves[i];
-		const fullMove = Math.ceil(ply / 2);
-		const prefix = ply % 2 === 1 ? `${fullMove}.` : `${fullMove}...`;
-		const currentClass = state.currentPly === ply ? "current" : "";
-		const label = node?.classification?.label || "";
-		const slug = label.toLowerCase().replace(/\s+/g, "-");
-		const icon = slug ? CLASS_ICONS[slug] : null;
-		const badge = icon ? `<span class="move-item-class ${slug}" title="${label}">${icon}</span>` : "";
-
-		entries.push(
-			`<div class="move-item ${currentClass}"><button data-ply="${ply}" type="button"><span class="move-item-text">${prefix} ${moveText}</span>${badge}</button></div>`,
-		);
-	}
-
-	refs.moveList.innerHTML = entries.join("");
-	refs.moveList.querySelectorAll("button[data-ply]").forEach((button) => {
-		button.addEventListener("click", () => {
-			seekToPly(Number(button.getAttribute("data-ply")));
-		});
-	});
-
-	keepVisibleInside(refs.moveList, refs.moveList.querySelector(".move-item.current"));
-}
-
 function renderBoard() {
 	const game = gameAtPly(state.currentPly);
 	const squares = boardCoordinates();
@@ -1159,7 +1128,6 @@ function render() {
 	renderBoard();
 	renderEvalBar();
 	renderPlayers();
-	updateMoveList();
 	renderMoveTreePanel();
 	renderTimelineScrubber();
 	renderOverview();
@@ -1202,8 +1170,37 @@ function resetLine() {
 	schedulePositionAnalysis(80);
 }
 
+/**
+ * Points the tooltip's arrow at the bubble that opened it. The tooltip is
+ * positioned against the whole row so it cannot overflow the sidebar, which
+ * leaves the arrow with no way to find the bubble on its own.
+ */
+function alignHelpArrow(event) {
+	const target = event.target;
+	const bubble = target instanceof HTMLElement ? target.closest(".help-bubble") : null;
+	if (!bubble) {
+		return;
+	}
+
+	const anchor = bubble.closest(".overview-row, .overview-heading, .pill");
+	if (!anchor) {
+		return;
+	}
+
+	const bubbleBox = bubble.getBoundingClientRect();
+	const anchorBox = anchor.getBoundingClientRect();
+	if (!anchorBox.width) {
+		return;
+	}
+
+	const centre = bubbleBox.left + bubbleBox.width / 2 - anchorBox.left;
+	anchor.style.setProperty("--help-arrow-x", `${Math.round(centre)}px`);
+}
+
 function bindEvents() {
 	initCollapsiblePanels();
+	document.addEventListener("pointerover", alignHelpArrow, true);
+	document.addEventListener("focusin", alignHelpArrow, true);
 	refs.loadPgnBtn.addEventListener("click", loadPgnFromInput);
 	refs.loadFenBtn.addEventListener("click", loadFenFromInput);
 	refs.applySettingsBtn.addEventListener("click", applyEngineSettings);
@@ -1235,7 +1232,11 @@ function bindEvents() {
 	refs.reviewModeToggle.addEventListener("change", () => {
 		state.settings.reviewMode = refs.reviewModeToggle.checked;
 		saveSettings();
-		setStatus(state.settings.reviewMode ? "Review mode: skipping Good/Excellent moves." : "Review mode off.");
+		setStatus(
+			state.settings.reviewMode
+				? "Review mode on: Prev and Next stop only on your notable moves."
+				: "Review mode off: Prev and Next step through every move.",
+		);
 	});
 	refs.analyzeBtn.addEventListener("click", () => {
 		// An explicit request wins over a running whole-game scan.

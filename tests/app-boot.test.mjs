@@ -161,6 +161,19 @@ async function bootAnalyzerPage() {
 	return { dom, window, document: window.document, errors, restore, settle, storage };
 }
 
+/** Navigate to a ply through the timeline scrubber; the move list is gone. */
+function seek(page, ply) {
+	const scrubber = page.document.getElementById("timeline-scrubber");
+	scrubber.value = String(ply);
+	scrubber.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+}
+
+/** The SAN of every move chip currently rendered in the tree. */
+function treeMoves(page) {
+	return [...page.document.querySelectorAll("#tree-path button[data-tree-action='jump-node']")]
+		.map((button) => button.querySelector(".tree-chip-move").textContent.trim());
+}
+
 const id = (doc, elementId) => doc.getElementById(elementId);
 
 test("the analyzer page boots, renders a board and analyses the start position", async () => {
@@ -175,7 +188,7 @@ test("the analyzer page boots, renders a board and analyses the start position",
 		assert.equal(page.document.querySelectorAll("#board img.piece").length, 32);
 
 		const status = id(page.document, "status").textContent;
-		assert.match(status, /to move \| eval/, `unexpected status: ${status}`);
+		assert.match(status, /to move · [+-]?\d/, `unexpected status: ${status}`);
 		assert.equal(page.errors.length, 0, `page errors: ${page.errors.join(", ")}`);
 
 		// The engine actually received a configured search.
@@ -187,24 +200,18 @@ test("the analyzer page boots, renders a board and analyses the start position",
 	}
 });
 
-test("loading a PGN populates the move list, tree and player strips", async () => {
+test("loading a PGN populates the tree, scrubber and player strips", async () => {
 	const page = await bootAnalyzerPage();
 	try {
 		id(page.document, "pgn-input").value = SHORT_PGN;
 		id(page.document, "load-pgn-btn").dispatchEvent(new page.window.Event("click"));
 		await page.settle(400);
 
-		const moveButtons = page.document.querySelectorAll("#move-list button[data-ply]");
-		assert.equal(moveButtons.length, 6, "every ply must appear in the move list");
-		assert.equal(moveButtons[0].querySelector(".move-item-text").textContent.trim(), "1. e4");
+		assert.deepEqual(treeMoves(page), ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"], "every ply must reach the tree");
 
 		assert.match(id(page.document, "player-bottom").textContent, /Alice \(1500\)/);
 		assert.match(id(page.document, "player-top").textContent, /Bob \(1700\)/);
 
-		assert.ok(
-			page.document.querySelectorAll("#tree-path button[data-tree-action='jump-node']").length >= 6,
-			"the move tree must render the mainline",
-		);
 		assert.equal(id(page.document, "timeline-scrubber").max, "6");
 		assert.equal(page.errors.length, 0, `page errors: ${page.errors.join(", ")}`);
 	} finally {
@@ -220,8 +227,7 @@ test("clicking two squares plays a live move and branches the loaded game", asyn
 		await page.settle(500);
 
 		// Jump to the position after 1.e4 e5, then play 2.Bc4 instead of 2.Nf3.
-		const plyTwo = page.document.querySelector("#move-list button[data-ply='2']");
-		plyTwo.dispatchEvent(new page.window.Event("click"));
+		seek(page, 2);
 		await page.settle();
 
 		const click = (square) =>
@@ -238,9 +244,9 @@ test("clicking two squares plays a live move and branches the loaded game", asyn
 		click("c4");
 		await page.settle(500);
 
-		const moveButtons = [...page.document.querySelectorAll("#move-list button[data-ply]")];
-		assert.equal(moveButtons.length, 3, "the branch replaces the rest of the loaded line");
-		assert.equal(moveButtons[2].querySelector(".move-item-text").textContent.trim(), "2. Bc4");
+		assert.equal(id(page.document, "timeline-scrubber").max, "3", "the branch replaces the rest of the line");
+		assert.equal(id(page.document, "scrubber-label").textContent, "Move 3 / 3");
+		assert.ok(treeMoves(page).includes("Bc4"), `expected Bc4 in the tree: ${treeMoves(page).join(" ")}`);
 		assert.equal(page.errors.length, 0, `page errors: ${page.errors.join(", ")}`);
 
 		// The classification panel reports the played move rather than staying empty.
@@ -265,7 +271,7 @@ test("the move tree shows a played variation and folds it away again", async () 
 		assert.deepEqual(chipText(), ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"], "the tree reads as notation, not UCI");
 
 		// Branch off with 2.Bc4 instead of the game's 2.Nf3.
-		page.document.querySelector("#move-list button[data-ply='2']").dispatchEvent(new page.window.Event("click"));
+		seek(page, 2);
 		await page.settle();
 		page.document.querySelector("#board .square[data-square='f1']").dispatchEvent(new page.window.Event("click"));
 		await page.settle();
@@ -283,7 +289,7 @@ test("the move tree shows a played variation and folds it away again", async () 
 		assert.equal(current.querySelector(".tree-chip-move").textContent.trim(), "Bc4");
 
 		// Stepping back onto the loaded game folds the variation away again.
-		page.document.querySelector("#move-list button[data-ply='1']").dispatchEvent(new page.window.Event("click"));
+		seek(page, 1);
 		await page.settle(300);
 		assert.ok(!chipText().includes("Bc4"), "an off-path variation collapses");
 		assert.equal(
@@ -304,7 +310,7 @@ test("the variation toggle expands and collapses on click", async () => {
 		id(page.document, "load-pgn-btn").dispatchEvent(new page.window.Event("click"));
 		await page.settle(500);
 
-		page.document.querySelector("#move-list button[data-ply='2']").dispatchEvent(new page.window.Event("click"));
+		seek(page, 2);
 		await page.settle();
 		page.document.querySelector("#board .square[data-square='f1']").dispatchEvent(new page.window.Event("click"));
 		await page.settle();
@@ -312,7 +318,7 @@ test("the variation toggle expands and collapses on click", async () => {
 		await page.settle(500);
 
 		// Move off the variation so the toggle reflects user intent rather than the path.
-		page.document.querySelector("#move-list button[data-ply='1']").dispatchEvent(new page.window.Event("click"));
+		seek(page, 1);
 		await page.settle(300);
 
 		const findToggle = () => page.document.querySelector("#tree-path button[data-tree-action='toggle-variations']");
@@ -377,12 +383,12 @@ test("flip, eval mode and reset controls stay functional after a game is loaded"
 
 		id(page.document, "eval-mode-btn").dispatchEvent(new page.window.Event("click"));
 		await page.settle();
-		assert.equal(id(page.document, "eval-mode-btn").textContent, "Sidebar: EP");
+		assert.equal(id(page.document, "eval-mode-btn").textContent, "Eval: win %");
 		assert.ok(id(page.document, "eval-bar").classList.contains("ep-mode"));
 
 		id(page.document, "reset-btn").dispatchEvent(new page.window.Event("click"));
 		await page.settle(200);
-		assert.equal(page.document.querySelectorAll("#move-list button[data-ply]").length, 0);
+		assert.deepEqual(treeMoves(page), [], "resetting clears the tree");
 		assert.match(id(page.document, "status").textContent, /reset|to move/i);
 		assert.equal(page.errors.length, 0, `page errors: ${page.errors.join(", ")}`);
 	} finally {
@@ -437,7 +443,7 @@ test("analysing a game never scrolls the page", async () => {
 		await page.settle(600);
 
 		// Walk around the game the way a user would while analysis is running.
-		page.document.querySelector("#move-list button[data-ply='4']").dispatchEvent(new page.window.Event("click"));
+		seek(page, 4);
 		await page.settle(200);
 		page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "End", bubbles: true }));
 		await page.settle(200);

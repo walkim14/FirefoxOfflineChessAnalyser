@@ -15,7 +15,7 @@
       <section class="board-panel">
         <header class="board-header">
           <h1>Offline Chess Analyzer</h1>
-          <p>Local PGN analysis with Stockfish WASM and live what-if moves.</p>
+          <p>Review a game move by move, then play out your own lines from any position.</p>
         </header>
 
         <div class="board-frame">
@@ -36,12 +36,12 @@
           <button id="prev-btn" type="button">Prev</button>
           <button id="next-btn" type="button">Next</button>
           <button id="flip-btn" type="button">Flip</button>
-          <button id="eval-mode-btn" type="button" aria-pressed="false">Sidebar: CP</button>
+          <button id="eval-mode-btn" type="button" aria-pressed="false">Eval: pawns</button>
           <label class="review-toggle" for="review-mode-toggle">
             <input id="review-mode-toggle" type="checkbox" />
-            <span>Review Mode</span>
+            <span>Review mode</span>
           </label>
-          <button id="reset-btn" type="button" class="danger">Reset Line</button>
+          <button id="reset-btn" type="button" class="danger">Reset line</button>
         </div>
 
         <div id="scan-progress-wrap" class="scan-progress hidden" aria-live="polite">
@@ -62,18 +62,22 @@
 
       <section id="side-panel" class="side-panel">
         <div class="side-toolbar">
-          <button id="toggle-side-btn" type="button">Hide Controls</button>
+          <button id="toggle-side-btn" type="button">Hide controls</button>
         </div>
 
         <div class="card control-card">
           <h2>Import</h2>
-          <label for="pgn-input">PGN</label>
-          <textarea id="pgn-input" rows="8" placeholder="Paste PGN here"></textarea>
-          <button id="load-pgn-btn" type="button">Load PGN</button>
+          <label for="pgn-input">Game PGN</label>
+          <textarea id="pgn-input" rows="7" placeholder="Paste a PGN to review"></textarea>
+          <div class="card-actions">
+            <button id="load-pgn-btn" class="primary" type="button">Load game</button>
+          </div>
 
-          <label for="fen-input">Start FEN</label>
-          <input id="fen-input" type="text" placeholder="Optional custom FEN" />
-          <button id="load-fen-btn" type="button">Load FEN</button>
+          <label for="fen-input">Or start from a position</label>
+          <input id="fen-input" type="text" placeholder="Paste a FEN" />
+          <div class="card-actions">
+            <button id="load-fen-btn" type="button">Load position</button>
+          </div>
         </div>
 
         <div class="card control-card">
@@ -97,7 +101,9 @@
               <option value="tournament">Tournament</option>
             </select>
           </div>
-          <button id="apply-theme-btn" type="button">Apply Theme</button>
+          <div class="card-actions">
+            <button id="apply-theme-btn" type="button">Apply theme</button>
+          </div>
         </div>
 
         <div class="card control-card">
@@ -106,22 +112,24 @@
             <label for="depth-input">Depth</label>
             <input id="depth-input" type="number" min="12" max="30" step="1" value="22" />
 
-            <label for="multipv-input">MultiPV</label>
+            <label for="multipv-input">Lines</label>
             <input id="multipv-input" type="number" min="1" max="4" step="1" value="3" />
 
-            <label for="hash-input">Hash MB</label>
+            <label for="hash-input">Memory (MB)</label>
             <input id="hash-input" type="number" min="64" max="512" step="64" value="128" />
 
-            <label for="elo-input">Player Elo</label>
+            <label for="elo-input">Your rating</label>
             <input id="elo-input" type="number" min="400" max="3000" step="50" value="1600" />
           </div>
-          <button id="apply-settings-btn" type="button">Apply Engine Settings</button>
-          <button id="analyze-btn" type="button">Analyze Current Position</button>
+          <div class="card-actions">
+            <button id="apply-settings-btn" class="primary" type="button">Apply settings</button>
+            <button id="analyze-btn" type="button">Analyze position</button>
+          </div>
         </div>
 
         <div class="card collapsible-card" data-collapsible-card>
           <button class="card-toggle" type="button" data-collapsible-toggle aria-expanded="true" aria-controls="move-classification-content">
-            <h2>Move Classification</h2>
+            <h2>Move quality</h2>
             <span class="card-toggle-icon" aria-hidden="true">▾</span>
           </button>
           <div id="move-classification-content" class="card-section-content" data-collapsible-content>
@@ -132,7 +140,7 @@
 
         <div class="card collapsible-card" data-collapsible-card>
           <button class="card-toggle" type="button" data-collapsible-toggle aria-expanded="true" aria-controls="game-overview-content">
-            <h2>Game Overview</h2>
+            <h2>Game review</h2>
             <span class="card-toggle-icon" aria-hidden="true">▾</span>
           </button>
           <div id="game-overview-content" class="card-section-content overview" data-collapsible-content>
@@ -147,7 +155,7 @@
 
         <div class="card collapsible-card" data-collapsible-card>
           <button class="card-toggle" type="button" data-collapsible-toggle aria-expanded="true" aria-controls="move-tree-content">
-            <h2>Move Tree</h2>
+            <h2>Moves</h2>
             <span class="card-toggle-icon" aria-hidden="true">▾</span>
           </button>
           <div id="move-tree-content" class="card-section-content" data-collapsible-content>
@@ -158,7 +166,7 @@
 
         <div class="card collapsible-card" data-collapsible-card>
           <button class="card-toggle" type="button" data-collapsible-toggle aria-expanded="true" aria-controls="engine-lines-content">
-            <h2>Engine Lines</h2>
+            <h2>Engine lines</h2>
             <span class="card-toggle-icon" aria-hidden="true">▾</span>
           </button>
           <div id="engine-lines-content" class="card-section-content" data-collapsible-content>
@@ -166,15 +174,6 @@
           </div>
         </div>
 
-        <div class="card collapsible-card" data-collapsible-card>
-          <button class="card-toggle" type="button" data-collapsible-toggle aria-expanded="true" aria-controls="move-list-content">
-            <h2>Move List</h2>
-            <span class="card-toggle-icon" aria-hidden="true">▾</span>
-          </button>
-          <div id="move-list-content" class="card-section-content" data-collapsible-content>
-            <div id="move-list" class="move-list"></div>
-          </div>
-        </div>
       </section>
     </main>
 

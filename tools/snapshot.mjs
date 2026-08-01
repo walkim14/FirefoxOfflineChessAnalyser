@@ -152,7 +152,7 @@ for (let i = 0; i < 400; i += 1) {
 await wait(400);
 
 // Park on a mid-game move so the classification panel has something to show.
-window.document.querySelector("#move-list button[data-ply='16']")?.dispatchEvent(new window.Event("click"));
+{ const sc = window.document.getElementById("timeline-scrubber"); sc.value = "16"; sc.dispatchEvent(new window.Event("input", { bubbles: true })); }
 await wait(400);
 
 if (mode === "ep") {
@@ -195,6 +195,22 @@ if (clip) {
 	clone.style.minWidth = "0";
 	holder.appendChild(clone);
 	window.document.body.appendChild(holder);
+}
+
+// jsdom has no layout, so the arrow offset is measured in the browser instead.
+if (forceTooltip) {
+	const script = window.document.createElement("script");
+	script.textContent = `
+		const scope = document.getElementById("__clip") || document;
+		const bubble = scope.querySelector(".overview-rows .overview-row:nth-child(2) .help-bubble");
+		if (bubble) {
+			const anchor = bubble.closest(".overview-row");
+			const b = bubble.getBoundingClientRect();
+			const a = anchor.getBoundingClientRect();
+			anchor.style.setProperty("--help-arrow-x", Math.round(b.left + b.width / 2 - a.left) + "px");
+		}
+	`;
+	window.document.body.appendChild(script);
 }
 
 const previewPath = join(appDir, "__snapshot.html");

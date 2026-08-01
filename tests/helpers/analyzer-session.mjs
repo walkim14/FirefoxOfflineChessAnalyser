@@ -240,7 +240,6 @@ export function createSession({ engine = new FakeEngine(), depth = 12, multiPV =
 		renderEvalBar: () => {
 			renders.evalBar += 1;
 		},
-		updateMoveList: noop,
 		renderMoveTreePanel: noop,
 		render: () => {
 			renders.full += 1;
