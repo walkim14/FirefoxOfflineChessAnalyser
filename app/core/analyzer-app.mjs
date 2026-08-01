@@ -392,10 +392,11 @@ function renderEvalBar() {
 	}
 
 	if (mode === "ep") {
-		const whiteEp = whiteHeight / 100;
-		const blackEp = 1 - whiteEp;
-		refs.evalLabel.textContent = `${(whiteEp * 100).toFixed(1)}%`;
-		refs.evalLabel.title = `White EP ${whiteEp.toFixed(2)} | Black EP ${blackEp.toFixed(2)}`;
+		// A whole percent is all this readout can honestly claim, and it keeps
+		// the number short enough to read at a glance.
+		const whitePercent = Math.round(whiteHeight);
+		refs.evalLabel.textContent = `${whitePercent}%`;
+		refs.evalLabel.title = `White is expected to score ${whitePercent}% here, Black ${100 - whitePercent}%.`;
 		return;
 	}
 
@@ -403,10 +404,10 @@ function renderEvalBar() {
 	if (typeof cp === "number") {
 		const pawns = cp / 100;
 		refs.evalLabel.textContent = pawns >= 0 ? `+${pawns.toFixed(1)}` : pawns.toFixed(1);
-		refs.evalLabel.title = "Centipawn-based evaluation";
+		refs.evalLabel.title = "Evaluation in pawns, from White's point of view.";
 	} else {
-		refs.evalLabel.textContent = "=";
-		refs.evalLabel.title = "Centipawn-based evaluation";
+		refs.evalLabel.textContent = "0.0";
+		refs.evalLabel.title = "Evaluation in pawns, from White's point of view.";
 	}
 }
 

@@ -25,6 +25,7 @@ export function getDomRefs() {
 		sidePanel: document.getElementById("side-panel"),
 		classificationPill: document.getElementById("classification-pill"),
 		classificationMeta: document.getElementById("classification-meta"),
+		overviewHeading: document.getElementById("overview-heading"),
 		overviewWhite: document.getElementById("overview-white"),
 		overviewBlack: document.getElementById("overview-black"),
 		overviewBreakdown: document.getElementById("overview-breakdown"),
