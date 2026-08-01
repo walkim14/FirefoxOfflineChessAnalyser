@@ -207,18 +207,73 @@ export function createAnalysisController({
 		}
 	}
 
+	/**
+	 * The whole-game review does not need the depth the user picked for the
+	 * single position they are staring at. Classification only has to sort each
+	 * move into one of seven expected-point buckets, and at the shipped
+	 * single-threaded engine the interactive profile costs roughly six times as
+	 * much per position as a review profile that lands in the same buckets.
+	 *
+	 * Two candidate lines are enough to spot an only-move; the third is needed
+	 * solely to confirm a Great or Brilliant, which is rare enough to fetch on
+	 * demand. See `confirmStandoutMove`.
+	 */
 	function getScanProfile() {
+		return {
+			depth: Math.min(state.settings.reviewDepth, state.settings.depth),
+			multiPV: Math.min(2, state.settings.multiPV),
+		};
+	}
+
+	/** Profile used for a single position the user is looking at. */
+	function getPositionProfile() {
 		return {
 			depth: state.settings.depth,
 			multiPV: state.settings.multiPV,
 		};
 	}
 
+	const STANDOUT_LABELS = new Set(["Great", "Brilliant"]);
+
+	/**
+	 * `Great` and `Brilliant` both require every alternative to be clearly worse,
+	 * which the classifier checks against the second *and* third engine lines.
+	 * The review runs on two lines, so a standout label is re-checked against a
+	 * three-line search before it is kept. Only a handful of moves per game get
+	 * this far, so it costs far less than reviewing everything on three lines.
+	 */
+	async function confirmStandoutMove({ classification, beforeFen, afterAnalysis, playedMoveUci, moverColor, gameBefore, afterFen, depth, ply }) {
+		if (!STANDOUT_LABELS.has(classification.label) || state.settings.multiPV < 3) {
+			return classification;
+		}
+
+		const key = cacheKeyFor(beforeFen, depth, 3);
+		let beforeAnalysis = state.positionCache.get(key);
+		if (!beforeAnalysis) {
+			const { result } = await analyzePosition({ fen: beforeFen, depth, multiPV: 3, phase: `scan-confirm-${ply}` });
+			beforeAnalysis = result;
+			state.positionCache.set(key, beforeAnalysis);
+		}
+
+		debugLog("Confirming standout move on three lines", { ply, label: classification.label });
+		return classifyMove({
+			beforeAnalysis,
+			afterAnalysis,
+			playedMoveUci,
+			moverColor,
+			playerElo: state.settings.playerElo,
+			gameBefore,
+			afterFen,
+		});
+	}
+
 	async function queueMoveClassification({ beforeFen, afterFen, playedMoveUci, moverColor, gameBefore, nodeId }) {
 		const token = ++state.latestMoveAnalysisToken;
 		state.isClassifying = true;
 		state.latestPositionAnalysisToken += 1;
-		const { depth, multiPV } = getScanProfile();
+		// A move the user just played is a single position, so it is worth the
+		// full interactive profile rather than the cheaper review one.
+		const { depth, multiPV } = getPositionProfile();
 
 		try {
 			setStatus("Classifying played move...");
@@ -320,21 +375,14 @@ export function createAnalysisController({
 				return;
 			}
 
-			setCurrentPlyOnActiveLine(ply);
-			renderBoard();
-			renderEvalBar();
-			renderMoveTreePanel();
-			setStatus(`Analyzing move ${ply}/${total}...`);
-			await delay(SCAN_PLAYBACK_DELAY_MS);
-
-			if (isCanceled()) {
-				finishCanceled(ply);
-				return;
-			}
-
 			const scanNodeId = scanNodeIds[ply];
 			const scanNode = scanNodeId ? getTreeNode(scanNodeId) : null;
 			if (scanNode?.classification) {
+				// Already scored: step the board forward without paying for a search.
+				setCurrentPlyOnActiveLine(ply);
+				renderBoard();
+				renderEvalBar();
+				renderMoveTreePanel();
 				state.moveClassifications[ply - 1] = scanNode.classification;
 				done += 1;
 				setScanProgress(done, total, "running");
@@ -353,6 +401,8 @@ export function createAnalysisController({
 			const moverColor = gameBefore.turn();
 
 			try {
+				// Each ply's "after" position is the next ply's "before", so the
+				// review costs one search per ply rather than two.
 				let beforeAnalysis = null;
 				if (previousAfterAnalysis && previousAfterFen === beforeFen) {
 					beforeAnalysis = previousAfterAnalysis;
@@ -377,12 +427,25 @@ export function createAnalysisController({
 					return;
 				}
 
-				const { result: afterAnalysis } = await analyzePosition({
+				// Start the search first, then play the move on the board. The
+				// playback beat runs while the engine works instead of after it.
+				const afterSearch = analyzePosition({
 					fen: afterFen,
 					depth: scanDepth,
 					multiPV: scanMultiPV,
 					phase: `scan-after-${ply}`,
 				});
+
+				setCurrentPlyOnActiveLine(ply);
+				renderBoard();
+				renderEvalBar();
+				renderMoveTreePanel();
+				setStatus(`Reviewing move ${ply} of ${total}...`);
+
+				const [{ result: afterAnalysis }] = await Promise.all([
+					afterSearch,
+					delay(SCAN_PLAYBACK_DELAY_MS),
+				]);
 
 				if (isCanceled()) {
 					finishCanceled(ply);
@@ -393,15 +456,31 @@ export function createAnalysisController({
 				previousAfterFen = afterFen;
 				previousAfterAnalysis = afterAnalysis;
 
-				const classification = classifyMove({
-					beforeAnalysis,
+				const classification = await confirmStandoutMove({
+					classification: classifyMove({
+						beforeAnalysis,
+						afterAnalysis,
+						playedMoveUci,
+						moverColor,
+						playerElo: state.settings.playerElo,
+						gameBefore,
+						afterFen,
+					}),
+					beforeFen,
 					afterAnalysis,
 					playedMoveUci,
 					moverColor,
-					playerElo: state.settings.playerElo,
 					gameBefore,
 					afterFen,
+					depth: scanDepth,
+					ply,
 				});
+
+				if (isCanceled()) {
+					finishCanceled(ply);
+					return;
+				}
+
 				if (scanNode) {
 					scanNode.classification = classification;
 				}

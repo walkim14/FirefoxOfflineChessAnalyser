@@ -41,15 +41,20 @@ const PIECE_CP = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
  * engine, which is exactly what the analysis pipeline must avoid.
  */
 export class FakeEngine {
-	constructor({ latencyMs = 0 } = {}) {
+	constructor({ latencyMs = 0, onAnalyze = null } = {}) {
 		this.latencyMs = latencyMs;
 		this.calls = [];
 		this.cancellations = 0;
 		this.cancelPending = null;
+		/** Called synchronously as each search starts, for ordering assertions. */
+		this.onAnalyze = onAnalyze;
 	}
 
 	async analyze(fen, { depth = 22, multiPV = 3 } = {}) {
 		this.calls.push({ fen, depth, multiPV });
+		if (this.onAnalyze) {
+			this.onAnalyze({ fen, depth, multiPV });
+		}
 
 		if (this.cancelPending) {
 			const cancel = this.cancelPending;
@@ -131,7 +136,13 @@ export class FakeEngine {
 	}
 }
 
-export function createSession({ engine = new FakeEngine(), depth = 12, multiPV = 3, playbackDelayMs = 0 } = {}) {
+export function createSession({
+	engine = new FakeEngine(),
+	depth = 12,
+	reviewDepth = depth,
+	multiPV = 3,
+	playbackDelayMs = 0,
+} = {}) {
 	const state = {
 		startFen: INITIAL_FEN,
 		treeRootId: 1,
@@ -148,7 +159,7 @@ export function createSession({ engine = new FakeEngine(), depth = 12, multiPV =
 		selectedSquare: null,
 		legalTargets: [],
 		players: { whiteName: "White", blackName: "Black", whiteElo: null, blackElo: null },
-		settings: { depth, multiPV, playerElo: 1600, reviewMode: false },
+		settings: { depth, reviewDepth, multiPV, playerElo: 1600, reviewMode: false },
 		positionCache: new Map(),
 		moveClassifications: [],
 		latestPositionAnalysisToken: 0,

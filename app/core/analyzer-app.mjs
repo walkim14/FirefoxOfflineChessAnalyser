@@ -632,6 +632,9 @@ async function loadSettings() {
 	}
 
 	refs.depthInput.value = String(state.settings.depth);
+	if (refs.reviewDepthInput) {
+		refs.reviewDepthInput.value = String(state.settings.reviewDepth);
+	}
 	refs.multipvInput.value = String(state.settings.multiPV);
 	refs.hashInput.value = String(state.settings.hashMb);
 	refs.eloInput.value = String(state.settings.playerElo);
@@ -733,6 +736,11 @@ function loadFenFromInput() {
 
 async function applyEngineSettings() {
 	state.settings.depth = clamp(Number(refs.depthInput.value) || DEFAULT_SETTINGS.depth, 12, 30);
+	state.settings.reviewDepth = clamp(
+		Number(refs.reviewDepthInput?.value) || DEFAULT_SETTINGS.reviewDepth,
+		10,
+		26,
+	);
 	state.settings.multiPV = clamp(Number(refs.multipvInput.value) || DEFAULT_SETTINGS.multiPV, 1, 4);
 	state.settings.hashMb = clamp(Number(refs.hashInput.value) || DEFAULT_SETTINGS.hashMb, 64, 512);
 	state.settings.playerElo = clamp(Number(refs.eloInput.value) || DEFAULT_SETTINGS.playerElo, 400, 3000);
@@ -741,6 +749,9 @@ async function applyEngineSettings() {
 	buildTimelineFromLine();
 	refs.hashInput.value = String(state.settings.hashMb);
 	refs.depthInput.value = String(state.settings.depth);
+	if (refs.reviewDepthInput) {
+		refs.reviewDepthInput.value = String(state.settings.reviewDepth);
+	}
 	refs.multipvInput.value = String(state.settings.multiPV);
 	refs.eloInput.value = String(state.settings.playerElo);
 

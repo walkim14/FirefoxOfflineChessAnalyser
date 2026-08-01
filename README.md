@@ -34,6 +34,9 @@ A local-first Firefox extension that opens its own analysis page (no chess.com o
 - `app/core/controllers/analysis-controller.mjs`: analysis scheduling, caching, move classification, and mainline scan pipeline.
 - `app/core/controllers/gameplay-controller.mjs`: playback/navigation, keyboard control, and board interaction moves.
 - `app/core/constants.mjs`: defaults and shared constants.
+- `tools/snapshot.mjs`: renders the real page to a PNG for looking at UI changes.
+- `tools/bench.mjs`, `tools/bench-scan.mjs`, `tools/bench-accuracy.mjs`: review speed and the
+  accuracy cost of running it shallower, both against the real engine.
 - `app/core/browser-storage.mjs`: async wrappers for `chrome.storage.local`.
 - `app/ui/*`: DOM refs and rendering helpers (board, tree, classification, overlays).
 - `app/ui/tree-renderer.mjs`: move tree markup — mainline rows, nested variations, expand state.
@@ -75,6 +78,42 @@ are looking at — so it is computed from the position that move was played from
 
 Note that this is review framing, not exploration framing: the arrow tells you what should have been
 played, not what to play next. It therefore can start from a square the played move has since vacated.
+
+### Review Performance
+
+A whole-game review used to run every position at the depth and line count chosen for the
+interactive board. Nothing needs depth 22 with three lines to sort a move into one of seven
+expected-point buckets, and on the single-threaded engine this extension ships that profile costs
+about 4.3 s per move.
+
+The review now has its own, cheaper profile:
+
+| | 24-ply game | per move |
+| --- | --- | --- |
+| Old — review at board settings (depth 22, 3 lines) | 104.4 s | 4.35 s |
+| New — review at depth 16, 2 lines | 12.0 s | 0.50 s |
+
+Measured with `tools/bench-scan.mjs` against the same `stockfish-18-lite-single` build the
+extension loads. Three changes get there:
+
+- **A separate review depth.** `tools/bench-accuracy.mjs` scores a shallow review against a deep
+  one move by move. Across a quiet grandmaster game and a sharp game full of real blunders, depth
+  16 never changed which moves were flagged as inaccuracies, mistakes or blunders. The drift is
+  confined to the fine gradation between Best, Excellent and Good, plus some `Great` labels a
+  shallow search cannot establish. Raise **Review depth** for a slower, stricter pass.
+- **Two lines instead of three.** The third line only decides `Great` and `Brilliant`, so it is
+  fetched on demand for the handful of moves that claim one, rather than paid for on every move.
+- **The playback beat overlaps the search.** The board animation used to run to completion before
+  the engine was asked anything, adding its delay to every ply.
+
+The review already costs one search per ply rather than two: each ply's resulting position is the
+next ply's starting position, so the result is carried forward.
+
+The single biggest remaining lever is **threads**. Stockfish is 3-4x faster multi-threaded, and the
+threaded build ships in `engine/`, but `SharedArrayBuffer` requires the page to be cross-origin
+isolated. Extension pages cannot set COOP/COEP response headers, so the analyzer runs
+single-threaded and `threadCountForEngine()` reports 1. If a future Firefox grants isolation to
+extension pages, the faster worker is picked up automatically with no code change.
 
 ### Move Tree
 
@@ -145,7 +184,9 @@ The suite runs on Node's built-in test runner and needs no browser:
 
 ## Notes
 
-- Engine defaults target responsiveness (`Depth 22`, `MultiPV 3`).
+- Engine defaults target responsiveness (`Depth 22`, `Lines 3`, `Review depth 16`).
+- **Depth** and **Lines** apply to the position on the board; **Review depth** applies to the
+  whole-game pass. See *Review Performance* above for the trade.
 - Browser-safe hash default is `128 MB` (bounded to `64..512 MB`) to reduce WASM crashes.
 - **Apply Engine Settings** pushes Hash/Threads/MultiPV to the worker via `setoption` and clears the
   analysis cache, so changed settings take effect immediately.

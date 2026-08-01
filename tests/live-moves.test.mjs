@@ -255,3 +255,82 @@ test("a single-PV cached result does not block the full MultiPV analysis", async
 	assert.equal(session.engine.calls.length, callsBefore + 1, "the approximate cache entry is only a placeholder");
 	assert.equal(state.positionCache.get(`${INITIAL_FEN}|d12|pv3`).lines.length, 3);
 });
+
+test("the whole-game review runs a cheaper profile than the interactive board", async () => {
+	// Depth 22 with three lines is roughly six times the cost per position of
+	// the review profile on the shipped single-threaded engine, and the labels
+	// land in the same buckets either way.
+	const session = createSession({ depth: 22, reviewDepth: 16, multiPV: 3 });
+	loadPgnInto(session);
+
+	const before = session.engine.calls.length;
+	await session.analysisController.scanMainlineClassifications();
+	// Read the calls before settling: the post-review position analysis that
+	// follows is interactive work and legitimately runs at full depth.
+	const scanCalls = session.engine.calls.slice(before);
+	await session.settle();
+
+	assert.ok(scanCalls.length > 0, "the review should have searched");
+	for (const call of scanCalls) {
+		assert.equal(call.depth, 16, "the review must use the review depth");
+		assert.ok(call.multiPV <= 3, `unexpected line count ${call.multiPV}`);
+	}
+
+	// Two lines for the sweep; three only where a standout label needs confirming.
+	const threeLine = scanCalls.filter((call) => call.multiPV === 3).length;
+	assert.ok(
+		threeLine < scanCalls.length / 2,
+		`three-line searches should be the exception, got ${threeLine} of ${scanCalls.length}`,
+	);
+
+	// One search per ply plus the starting position, not two per ply.
+	assert.ok(
+		scanCalls.length - threeLine <= session.state.lineMoves.length + 1,
+		`expected at most ${session.state.lineMoves.length + 1} sweep searches, got ${scanCalls.length - threeLine}`,
+	);
+});
+
+test("a move the user plays still gets the full interactive profile", async () => {
+	const session = createSession({ depth: 22, reviewDepth: 14, multiPV: 3 });
+	loadPgnInto(session);
+	const { gameplayController } = session;
+
+	gameplayController.seekToPly(2);
+	const before = session.engine.calls.length;
+	await gameplayController.playMoveAtCurrentPly("f1c4");
+	const classifyCalls = session.engine.calls.slice(before);
+	await session.settle();
+
+	assert.ok(classifyCalls.length > 0, "classifying should have searched");
+	for (const call of classifyCalls) {
+		assert.equal(call.depth, 22, "a played move is one position and deserves full depth");
+	}
+});
+
+test("the review starts each search before animating the move", async () => {
+	// The playback beat used to run to completion before the engine was asked
+	// anything, so its delay was added to every ply of the game rather than
+	// spent while the engine was already working.
+	const engine = new FakeEngine({ latencyMs: 2 });
+	const session = createSession({ engine, depth: 12, reviewDepth: 12, multiPV: 2, playbackDelayMs: 20 });
+	loadPgnInto(session);
+
+	const observed = [];
+	engine.onAnalyze = ({ fen }) => {
+		observed.push({ fen, plyOnBoard: session.state.currentPly });
+	};
+
+	await session.analysisController.scanMainlineClassifications();
+	await session.settle();
+
+	const timeline = session.state.timelineFens;
+	// A search whose position is further along than the board is one that was
+	// issued before the move was played on screen.
+	const startedEarly = observed.filter((entry) => timeline.indexOf(entry.fen) > entry.plyOnBoard);
+	assert.equal(
+		startedEarly.length,
+		session.state.lineMoves.length,
+		`every ply's search should begin before its animation; got ${startedEarly.length}`,
+	);
+	assert.ok(session.renders.board > 0, "the board still animates during the review");
+});

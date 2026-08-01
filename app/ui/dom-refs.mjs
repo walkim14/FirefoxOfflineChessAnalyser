@@ -12,6 +12,7 @@ export function getDomRefs() {
 		evalModeBtn: document.getElementById("eval-mode-btn"),
 		resetBtn: document.getElementById("reset-btn"),
 		depthInput: document.getElementById("depth-input"),
+		reviewDepthInput: document.getElementById("review-depth-input"),
 		multipvInput: document.getElementById("multipv-input"),
 		hashInput: document.getElementById("hash-input"),
 		eloInput: document.getElementById("elo-input"),
