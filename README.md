@@ -35,8 +35,11 @@ A local-first Firefox extension that opens its own analysis page (no chess.com o
 - `app/core/controllers/gameplay-controller.mjs`: playback/navigation, keyboard control, and board interaction moves.
 - `app/core/constants.mjs`: defaults and shared constants.
 - `tools/snapshot.mjs`: renders the real page to a PNG for looking at UI changes.
-- `tools/bench.mjs`, `tools/bench-scan.mjs`, `tools/bench-accuracy.mjs`: review speed and the
-  accuracy cost of running it shallower, both against the real engine.
+- `app/engine-pool.mjs`: runs several single-threaded engines at once for a whole-game review.
+- `tools/bench*.mjs`: review speed, pool scaling, and the accuracy cost of a shallower review — all
+  against the real engine.
+- `tools/probe/run-probe.mjs`: loads the extension in the real Firefox and reports what the page can
+  actually do (threading, `SharedArrayBuffer`). It swaps the manifest while it runs and restores it.
 - `app/core/browser-storage.mjs`: async wrappers for `chrome.storage.local`.
 - `app/ui/*`: DOM refs and rendering helpers (board, tree, classification, overlays).
 - `app/ui/tree-renderer.mjs`: move tree markup — mainline rows, nested variations, expand state.
@@ -90,8 +93,10 @@ The review now has its own, cheaper profile:
 
 | | 24-ply game | per move |
 | --- | --- | --- |
-| Old — review at board settings (depth 22, 3 lines) | 104.4 s | 4.35 s |
-| New — review at depth 16, 2 lines | 12.0 s | 0.50 s |
+| Old — review at board settings (depth 22, 3 lines), one engine | 104.4 s | 4.35 s |
+| New — review at depth 16, 2 lines, one engine | 12.0 s | 0.50 s |
+
+Running that review across the engine pool cuts it by a further ~3.4x; see *Parallelism* below.
 
 Measured with `tools/bench-scan.mjs` against the same `stockfish-18-lite-single` build the
 extension loads. Three changes get there:
@@ -109,13 +114,42 @@ extension loads. Three changes get there:
 The review already costs one search per ply rather than two: each ply's resulting position is the
 next ply's starting position, so the result is carried forward.
 
-The single biggest remaining lever is **threads**. Stockfish is 3-4x faster multi-threaded, and the
-threaded build ships in `engine/`, but `SharedArrayBuffer` requires the page to be cross-origin
-isolated. Extension pages cannot set COOP/COEP response headers, so the analyzer runs
-single-threaded and `threadCountForEngine()` reports 1. If a future Firefox grants isolation to
-extension pages, the faster worker is picked up automatically with no code change.
+### Parallelism
 
-### Move Tree
+Stockfish can search on several threads, but that build needs `SharedArrayBuffer`, which requires the
+page to be cross-origin isolated. `tools/probe/run-probe.mjs` loads the real extension in the real
+Firefox and reports what the page can actually do. The answer is unambiguous:
+
+```
+crossOriginIsolated  false
+SharedArrayBuffer    undefined
+threaded build       WORKER ERROR ReferenceError: SharedArrayBuffer is not defined
+```
+
+Adding Chrome's `cross_origin_embedder_policy` / `cross_origin_opener_policy` manifest keys changes
+nothing in Firefox, and neither does flipping the related browser prefs. Extension pages cannot set
+COOP/COEP response headers, so internal engine threads are simply unavailable.
+
+The parallelism comes from the other direction instead. A review is a pile of positions that do not
+depend on one another, so rather than one engine with many threads it runs **many single-threaded
+engines, one position each** (`app/engine-pool.mjs`). Measured inside Firefox on a 16-core machine,
+25 positions at the review profile:
+
+| engines | time |
+| --- | --- |
+| 1 | 9.95 s |
+| 6 | 2.91 s |
+
+That is a **3.4x** speedup, the same order internal threading would have given, with no
+`SharedArrayBuffer` involved. The pool takes `cores - 1`, capped at six — beyond that the extra
+engines stop paying for themselves — and shares the configured memory budget between them rather
+than giving each one the full amount. It starts when a review starts and is disposed when the review
+ends, so idle memory is unchanged.
+
+Combined with the cheaper review profile, a whole-game review went from roughly 4.3 s per move to
+well under half a second.
+
+### Move Tree### Move Tree
 
 The tree renders a reference spine — the loaded PGN mainline, or the first line played when starting
 from a FEN — with every alternative shown as an indented variation beneath the move it branches from.

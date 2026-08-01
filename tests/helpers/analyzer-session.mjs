@@ -18,6 +18,7 @@ import { createGameplayController } from "../../app/core/controllers/gameplay-co
 import { classifyMove } from "../../app/move-classifier.mjs";
 import { analyzeWithFallback } from "../../app/analysis-fallback.mjs";
 import { isReviewSkipLabel } from "../../app/ui/classification-view.mjs";
+import { EnginePool } from "../../app/engine-pool.mjs";
 
 const require = createRequire(import.meta.url);
 const { Chess } = require("chess.js");
@@ -41,13 +42,15 @@ const PIECE_CP = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
  * engine, which is exactly what the analysis pipeline must avoid.
  */
 export class FakeEngine {
-	constructor({ latencyMs = 0, onAnalyze = null } = {}) {
+	constructor({ latencyMs = 0, onAnalyze = null, stats = null } = {}) {
 		this.latencyMs = latencyMs;
 		this.calls = [];
 		this.cancellations = 0;
 		this.cancelPending = null;
 		/** Called synchronously as each search starts, for ordering assertions. */
 		this.onAnalyze = onAnalyze;
+		/** Shared across a pool, so concurrency can be observed. */
+		this.stats = stats;
 	}
 
 	async analyze(fen, { depth = 22, multiPV = 3 } = {}) {
@@ -69,6 +72,12 @@ export class FakeEngine {
 		});
 		canceled.catch(() => {});
 		this.cancelPending = cancelThisCall;
+
+		if (this.stats) {
+			this.stats.inFlight += 1;
+			this.stats.maxInFlight = Math.max(this.stats.maxInFlight, this.stats.inFlight);
+			this.stats.searches += 1;
+		}
 
 		try {
 			await Promise.race([delay(this.latencyMs), canceled]);
@@ -111,6 +120,9 @@ export class FakeEngine {
 				winPercentWhite: 50,
 			};
 		} finally {
+			if (this.stats) {
+				this.stats.inFlight -= 1;
+			}
 			if (this.cancelPending === cancelThisCall) {
 				this.cancelPending = null;
 			}
@@ -134,6 +146,22 @@ export class FakeEngine {
 	callsFor(fen) {
 		return this.calls.filter((call) => call.fen === fen);
 	}
+
+	// The rest of the StockfishClient surface the pool relies on.
+	async configure() {}
+
+	cancelAll(message = "Canceled by newer request.") {
+		if (this.cancelPending) {
+			const cancel = this.cancelPending;
+			this.cancelPending = null;
+			this.cancellations += 1;
+			cancel(new Error(message));
+		}
+	}
+
+	dispose() {
+		this.cancelAll("Engine worker disposed.");
+	}
 }
 
 export function createSession({
@@ -142,6 +170,10 @@ export function createSession({
 	reviewDepth = depth,
 	multiPV = 3,
 	playbackDelayMs = 0,
+	poolSize = 1,
+	// By default the review shares the one engine, so existing tests can keep
+	// asserting on `engine.calls`. Raise `poolSize` to exercise the pool.
+	enginePool = null,
 } = {}) {
 	const state = {
 		startFen: INITIAL_FEN,
@@ -219,6 +251,15 @@ export function createSession({
 		return best ? { analysis: best.analysis, mode: "approx" } : null;
 	};
 
+	// A pool member that forwards to the single fake engine, so a one-engine
+	// pool behaves exactly like the old sequential review.
+	const sharedEngineClient = {
+		analyze: (fen, options) => engine.analyze(fen, options),
+		configure: async () => {},
+		cancelAll: () => {},
+		dispose: () => {},
+	};
+
 	const renders = { board: 0, evalBar: 0, full: 0, classification: 0, engineLines: 0 };
 	const noop = () => {};
 	const clearSelection = () => {
@@ -226,10 +267,20 @@ export function createSession({
 		state.legalTargets = [];
 	};
 
+	const poolStats = { inFlight: 0, maxInFlight: 0, searches: 0 };
+	const pool = enginePool || new EnginePool({
+		createClient: () => (poolSize === 1
+			? sharedEngineClient
+			: new FakeEngine({ latencyMs: engine.latencyMs, stats: poolStats })),
+		size: poolSize,
+	});
+
 	const analysisController = createAnalysisController({
 		state,
 		refs,
 		engine,
+		enginePool: pool,
+		poolStats,
 		Chess,
 		classifyMove,
 		analyzeWithFallback,
@@ -319,6 +370,8 @@ export function createSession({
 		Chess,
 		analysisController,
 		gameplayController,
+		enginePool: pool,
+		poolStats,
 		loadLine,
 		settle,
 		getTreeNode,

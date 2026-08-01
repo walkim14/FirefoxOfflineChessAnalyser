@@ -167,7 +167,7 @@ sidePanel.classList.remove("collapsed");
 const overrides = window.document.createElement("style");
 overrides.textContent = `
 	.bg-shape { display: none; }
-	${forceTooltip ? "#overview-breakdown .overview-rows .overview-row:nth-child(2) .help-tooltip { opacity: 1 !important; visibility: visible !important; transform: translateY(0) !important; }" : ""}
+	${forceTooltip ? (process.argv.includes("--setting-tooltip") ? "#review-depth-input" : "#overview-breakdown .overview-rows .overview-row:nth-child(2)").replace(/^#review-depth-input$/, ".setting-row:nth-child(2)") + " .help-tooltip { opacity: 1 !important; visibility: visible !important; transform: translateY(0) !important; }" : ""}
 	${clip ? `body > *:not(#__clip) { display: none !important; }` : ""}
 `;
 window.document.head.appendChild(overrides);
@@ -202,9 +202,9 @@ if (forceTooltip) {
 	const script = window.document.createElement("script");
 	script.textContent = `
 		const scope = document.getElementById("__clip") || document;
-		const bubble = scope.querySelector(".overview-rows .overview-row:nth-child(2) .help-bubble");
+		const bubble = scope.querySelector(".overview-rows .overview-row:nth-child(2) .help-bubble") || scope.querySelector(".setting-row:nth-child(2) .help-bubble");
 		if (bubble) {
-			const anchor = bubble.closest(".overview-row");
+			const anchor = bubble.closest(".overview-row, .setting-row");
 			const b = bubble.getBoundingClientRect();
 			const a = anchor.getBoundingClientRect();
 			anchor.style.setProperty("--help-arrow-x", Math.round(b.left + b.width / 2 - a.left) + "px");

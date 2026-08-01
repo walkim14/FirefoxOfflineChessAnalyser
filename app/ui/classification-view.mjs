@@ -250,6 +250,14 @@ export function renderOverview({ refs, state, Chess, getTreeNode, classIcons, cl
 	`;
 }
 
+export const SETTING_HELP = {
+	depth: 'How far ahead the engine looks at the position on the board. Each extra step roughly doubles the time a search takes, so raise it for a sharper answer and lower it for a faster one.',
+	reviewdepth: 'How far ahead the engine looks when scoring a whole game. It is kept lower than Depth because a review only has to sort each move into a band. At the default it still finds every inaccuracy, mistake and blunder; raising it mainly refines the gradation between Best, Excellent and Good.',
+	multipv: 'How many candidate moves the engine reports for the position on the board. More lines cost more time.',
+	hash: 'How much memory the engine may use to remember positions it has already worked out. A review shares this budget across the engines it runs in parallel.',
+	elo: 'Used to judge whether a sacrifice was worth spotting, so Brilliant and Great mean roughly the same thing at your level.',
+};
+
 const ACCURACY_HELP =
 	"Accuracy weighs how much each move cost, in expected points and in centipawns. 100 means every move matched the engine's first choice.";
 

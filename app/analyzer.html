@@ -83,46 +83,56 @@
         <div class="card control-card">
           <h2>Theme</h2>
           <div class="settings-grid">
-            <label for="board-style-select">Board</label>
-            <select id="board-style-select">
-              <option value="brown">Brown</option>
-              <option value="green">Green</option>
-              <option value="blue">Blue</option>
-              <option value="marble">Marble</option>
-              <option value="walnut">Walnut</option>
-            </select>
+            <div class="setting-row">
+              <label for="board-style-select">Board</label>
+              <select id="board-style-select">
+                <option value="brown">Brown</option>
+                <option value="green">Green</option>
+                <option value="blue">Blue</option>
+                <option value="marble">Marble</option>
+                <option value="walnut">Walnut</option>
+              </select>
+            </div>
 
-            <label for="piece-style-select">Pieces</label>
-            <select id="piece-style-select">
-              <option value="neo">Neo</option>
-              <option value="classic">Classic</option>
-              <option value="wood">Wood</option>
-              <option value="3d_wood">3D Wood</option>
-              <option value="tournament">Tournament</option>
-            </select>
+            <div class="setting-row">
+              <label for="piece-style-select">Pieces</label>
+              <select id="piece-style-select">
+                <option value="neo">Neo</option>
+                <option value="classic">Classic</option>
+                <option value="wood">Wood</option>
+                <option value="3d_wood">3D Wood</option>
+                <option value="tournament">Tournament</option>
+              </select>
+            </div>
           </div>
           <div class="card-actions">
             <button id="apply-theme-btn" type="button">Apply theme</button>
           </div>
         </div>
 
-        <div class="card control-card">
+        <div id="analysis-card" class="card control-card">
           <h2>Analysis</h2>
           <div class="settings-grid">
-            <label for="depth-input">Depth</label>
-            <input id="depth-input" type="number" min="12" max="30" step="1" value="22" />
-
-            <label for="review-depth-input">Review depth</label>
-            <input id="review-depth-input" type="number" min="10" max="26" step="1" value="16" />
-
-            <label for="multipv-input">Lines</label>
-            <input id="multipv-input" type="number" min="1" max="4" step="1" value="3" />
-
-            <label for="hash-input">Memory (MB)</label>
-            <input id="hash-input" type="number" min="64" max="512" step="64" value="128" />
-
-            <label for="elo-input">Your rating</label>
-            <input id="elo-input" type="number" min="400" max="3000" step="50" value="1600" />
+            <div class="setting-row">
+              <label for="depth-input">Depth<span class="help-slot" data-help="depth"></span></label>
+              <input id="depth-input" type="number" min="12" max="30" step="1" value="22" />
+            </div>
+            <div class="setting-row">
+              <label for="review-depth-input">Review depth<span class="help-slot" data-help="review-depth"></span></label>
+              <input id="review-depth-input" type="number" min="10" max="26" step="1" value="16" />
+            </div>
+            <div class="setting-row">
+              <label for="multipv-input">Lines<span class="help-slot" data-help="multipv"></span></label>
+              <input id="multipv-input" type="number" min="1" max="4" step="1" value="3" />
+            </div>
+            <div class="setting-row">
+              <label for="hash-input">Memory (MB)<span class="help-slot" data-help="hash"></span></label>
+              <input id="hash-input" type="number" min="64" max="512" step="64" value="128" />
+            </div>
+            <div class="setting-row">
+              <label for="elo-input">Your rating<span class="help-slot" data-help="elo"></span></label>
+              <input id="elo-input" type="number" min="400" max="3000" step="50" value="1600" />
+            </div>
           </div>
           <div class="card-actions">
             <button id="apply-settings-btn" class="primary" type="button">Apply settings</button>

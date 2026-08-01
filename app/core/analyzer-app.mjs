@@ -1,5 +1,6 @@
 import { Chess } from "../../vendor/chess.js";
 import { StockfishClient } from "../stockfish-client.mjs";
+import { EnginePool, idealPoolSize } from "../engine-pool.mjs";
 import { classifyMove, expectedWhitePercent } from "../move-classifier.mjs";
 import { parsePgnToLine } from "../pgn-loader.mjs";
 import { analyzeWithFallback } from "../analysis-fallback.mjs";
@@ -26,6 +27,8 @@ import {
 	shortLabelForTag as shortLabelForTagView,
 	updateClassificationView as updateClassificationViewView,
 	updateEngineLinesView as updateEngineLinesViewView,
+	renderHelpBubble,
+	SETTING_HELP,
 } from "../ui/classification-view.mjs";
 import {
 	CLASS_ICONS,
@@ -93,6 +96,15 @@ const state = {
 const refs = getDomRefs();
 
 const engine = new StockfishClient({ debugLabel: "ui", debug: true });
+
+// Reviewing a game is a pile of independent positions, so it runs on several
+// engines at once. Internal engine threads are not available: they need
+// SharedArrayBuffer, which an extension page does not get. See engine-pool.mjs.
+const enginePool = new EnginePool({
+	createClient: () => new StockfishClient({ debugLabel: "pool", debug: false }),
+	size: idealPoolSize(globalThis.navigator?.hardwareConcurrency),
+	logger: (message, payload) => debugLog(message, payload),
+});
 
 function clamp(value, min, max) {
 	return Math.max(min, Math.min(max, value));
@@ -798,6 +810,7 @@ const analysisController = createAnalysisController({
 	state,
 	refs,
 	engine,
+	enginePool,
 	Chess,
 	classifyMove,
 	analyzeWithFallback,
@@ -1193,7 +1206,7 @@ function alignHelpArrow(event) {
 		return;
 	}
 
-	const anchor = bubble.closest(".overview-row, .overview-heading, .pill");
+	const anchor = bubble.closest(".overview-row, .overview-heading, .pill, .setting-row");
 	if (!anchor) {
 		return;
 	}
@@ -1208,8 +1221,20 @@ function alignHelpArrow(event) {
 	anchor.style.setProperty("--help-arrow-x", `${Math.round(centre)}px`);
 }
 
+/** Fills the `?` placeholders next to each engine setting. */
+function renderSettingHelp() {
+	for (const slot of document.querySelectorAll(".help-slot[data-help]")) {
+		const key = slot.getAttribute("data-help").replace(/-/g, "");
+		const help = SETTING_HELP[key];
+		if (help) {
+			slot.innerHTML = renderHelpBubble(slot.closest("label")?.textContent?.trim() || key, help);
+		}
+	}
+}
+
 function bindEvents() {
 	initCollapsiblePanels();
+	renderSettingHelp();
 	document.addEventListener("pointerover", alignHelpArrow, true);
 	document.addEventListener("focusin", alignHelpArrow, true);
 	refs.loadPgnBtn.addEventListener("click", loadPgnFromInput);

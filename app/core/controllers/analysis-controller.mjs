@@ -10,6 +10,7 @@ export function createAnalysisController({
 	state,
 	refs,
 	engine,
+	enginePool,
 	Chess,
 	classifyMove,
 	analyzeWithFallback,
@@ -55,6 +56,9 @@ export function createAnalysisController({
 		const wasRunning = state.scanInProgress;
 		state.mainlineScanToken += 1;
 		state.scanInProgress = false;
+		if (wasRunning) {
+			enginePool.cancel();
+		}
 		return wasRunning;
 	}
 
@@ -97,8 +101,11 @@ export function createAnalysisController({
 	/**
 	 * Single entry point for every engine call: finished positions are decided
 	 * by the rules and never reach the worker.
+	 *
+	 * `client` defaults to the shared interactive engine; the review passes one
+	 * of the pool's engines so several positions can be searched at once.
 	 */
-	async function analyzePosition({ fen, depth, multiPV, phase }) {
+	async function analyzePosition({ fen, depth, multiPV, phase, client = engine }) {
 		const terminal = terminalAnalysis(fen, Chess);
 		if (terminal) {
 			debugLog("Terminal position, skipping engine", { fen, phase, terminal: terminal.terminal });
@@ -106,7 +113,7 @@ export function createAnalysisController({
 		}
 
 		return analyzeWithFallback({
-			engine,
+			engine: client,
 			fen,
 			depth,
 			multiPV,
@@ -341,6 +348,31 @@ export function createAnalysisController({
 		}
 	}
 
+	/**
+	 * Evaluates every position of the line at once, spread across the engine
+	 * pool, and returns one promise per ply index. The review then walks the
+	 * board in order while later positions are still being searched.
+	 */
+	function dispatchLinePositions({ fens, depth, multiPV }) {
+		const jobs = fens.map((fen, index) => ({ fen, index }));
+		return enginePool.run(jobs, async (client, job) => {
+			const cached = state.positionCache.get(cacheKeyFor(job.fen, depth, multiPV));
+			if (cached) {
+				return cached;
+			}
+
+			const { result } = await analyzePosition({
+				fen: job.fen,
+				depth,
+				multiPV,
+				phase: `review-${job.index}`,
+				client,
+			});
+			state.positionCache.set(cacheKeyFor(job.fen, depth, multiPV), result);
+			return result;
+		});
+	}
+
 	async function scanMainlineClassifications() {
 		const myToken = ++state.mainlineScanToken;
 		if (state.lineMoves.length === 0) {
@@ -352,24 +384,45 @@ export function createAnalysisController({
 		const total = state.lineMoves.length;
 		const scanNodeIds = state.activeLineNodeIds.slice();
 		const { depth: scanDepth, multiPV: scanMultiPV } = getScanProfile();
+		const timeline = state.timelineFens.slice();
 		let done = 0;
-		let previousAfterFen = null;
-		let previousAfterAnalysis = null;
 		setScanProgress(done, total, "running");
 		clearSelection();
 
-		debugLog("Mainline scan started", { plies: state.lineMoves.length, scanDepth, scanMultiPV });
-
 		const isCanceled = () => myToken !== state.mainlineScanToken;
 		const finishCanceled = (ply) => {
-			debugLog("Mainline scan canceled", { ply });
-			// Only report the cancellation if no newer scan has already taken over.
+			debugLog("Review canceled", { ply });
+			enginePool.cancel();
+			// Only report the cancellation if no newer review has taken over.
 			if (!state.scanInProgress) {
 				setScanProgress(done, total, "canceled");
 			}
 		};
 
-		for (let ply = 1; ply <= state.lineMoves.length; ply += 1) {
+		let positions = null;
+		try {
+			await enginePool.start({ hashMb: state.settings.hashMb });
+			if (isCanceled()) {
+				finishCanceled(0);
+				return;
+			}
+
+			debugLog("Review started", {
+				plies: total,
+				scanDepth,
+				scanMultiPV,
+				engines: enginePool.clients.length,
+			});
+			positions = dispatchLinePositions({ fens: timeline, depth: scanDepth, multiPV: scanMultiPV });
+		} catch (error) {
+			debugLog("Review could not start", String(error?.message || error));
+			setStatus(`Review could not start: ${error?.message || error}`);
+			state.scanInProgress = false;
+			setScanProgress(done, total, "failed");
+			return;
+		}
+
+		for (let ply = 1; ply <= total; ply += 1) {
 			if (isCanceled()) {
 				finishCanceled(ply);
 				return;
@@ -377,23 +430,25 @@ export function createAnalysisController({
 
 			const scanNodeId = scanNodeIds[ply];
 			const scanNode = scanNodeId ? getTreeNode(scanNodeId) : null;
+			const playedMoveUci = state.lineMoves[ply - 1];
+			const beforeFen = timeline[ply - 1];
+			const afterFen = timeline[ply];
+
+			// Step the board forward whether or not this ply needs a search.
+			setCurrentPlyOnActiveLine(ply);
+			renderBoard();
+			renderEvalBar();
+			renderMoveTreePanel();
+
 			if (scanNode?.classification) {
-				// Already scored: step the board forward without paying for a search.
-				setCurrentPlyOnActiveLine(ply);
-				renderBoard();
-				renderEvalBar();
-				renderMoveTreePanel();
 				state.moveClassifications[ply - 1] = scanNode.classification;
 				done += 1;
 				setScanProgress(done, total, "running");
 				continue;
 			}
 
-			const beforeFen = state.timelineFens[ply - 1];
-			const afterFen = state.timelineFens[ply];
-			const playedMoveUci = state.lineMoves[ply - 1];
 			if (!beforeFen || !afterFen || !playedMoveUci) {
-				debugLog("Mainline scan skipped incomplete ply", { ply });
+				debugLog("Review skipped incomplete ply", { ply });
 				continue;
 			}
 
@@ -401,49 +456,12 @@ export function createAnalysisController({
 			const moverColor = gameBefore.turn();
 
 			try {
-				// Each ply's "after" position is the next ply's "before", so the
-				// review costs one search per ply rather than two.
-				let beforeAnalysis = null;
-				if (previousAfterAnalysis && previousAfterFen === beforeFen) {
-					beforeAnalysis = previousAfterAnalysis;
-				} else {
-					const beforeCached = state.positionCache.get(cacheKeyFor(beforeFen, scanDepth, scanMultiPV));
-					if (beforeCached) {
-						beforeAnalysis = beforeCached;
-					} else {
-						const beforeResult = await analyzePosition({
-							fen: beforeFen,
-							depth: scanDepth,
-							multiPV: scanMultiPV,
-							phase: `scan-before-${ply}`,
-						});
-						beforeAnalysis = beforeResult.result;
-						state.positionCache.set(cacheKeyFor(beforeFen, scanDepth, scanMultiPV), beforeAnalysis);
-					}
-				}
-
-				if (isCanceled()) {
-					finishCanceled(ply);
-					return;
-				}
-
-				// Start the search first, then play the move on the board. The
-				// playback beat runs while the engine works instead of after it.
-				const afterSearch = analyzePosition({
-					fen: afterFen,
-					depth: scanDepth,
-					multiPV: scanMultiPV,
-					phase: `scan-after-${ply}`,
-				});
-
-				setCurrentPlyOnActiveLine(ply);
-				renderBoard();
-				renderEvalBar();
-				renderMoveTreePanel();
 				setStatus(`Reviewing move ${ply} of ${total}...`);
-
-				const [{ result: afterAnalysis }] = await Promise.all([
-					afterSearch,
+				// The engines are already working ahead; the playback beat is
+				// spent waiting for this ply rather than added to it.
+				const [beforeAnalysis, afterAnalysis] = await Promise.all([
+					positions[ply - 1],
+					positions[ply],
 					delay(SCAN_PLAYBACK_DELAY_MS),
 				]);
 
@@ -451,10 +469,6 @@ export function createAnalysisController({
 					finishCanceled(ply);
 					return;
 				}
-
-				state.positionCache.set(cacheKeyFor(afterFen, scanDepth, scanMultiPV), afterAnalysis);
-				previousAfterFen = afterFen;
-				previousAfterAnalysis = afterAnalysis;
 
 				const classification = await confirmStandoutMove({
 					classification: classifyMove({
@@ -498,10 +512,11 @@ export function createAnalysisController({
 					return;
 				}
 
-				debugLog("Mainline scan failed", { ply, error: String(error?.message || error) });
-				setStatus(`Mainline scan stopped at ply ${ply}: ${error?.message || error}`);
+				debugLog("Review failed", { ply, error: String(error?.message || error) });
+				setStatus(`Review stopped at move ${ply}: ${error?.message || error}`);
 				state.scanInProgress = false;
 				setScanProgress(done, total, "failed");
+				enginePool.dispose();
 				syncLineFromTree();
 				setCurrentPlyOnActiveLine(originalPly);
 				render();
@@ -511,13 +526,15 @@ export function createAnalysisController({
 		}
 
 		if (isCanceled()) {
-			finishCanceled(state.lineMoves.length);
+			finishCanceled(total);
 			return;
 		}
 
-		debugLog("Mainline scan complete", { plies: state.lineMoves.length });
+		debugLog("Review complete", { plies: total });
 		state.scanInProgress = false;
 		setScanProgress(total, total, "done");
+		// Hand the machine back: the pool is only needed while reviewing.
+		enginePool.dispose();
 		syncLineFromTree();
 		setCurrentPlyOnActiveLine(originalPly);
 		render();

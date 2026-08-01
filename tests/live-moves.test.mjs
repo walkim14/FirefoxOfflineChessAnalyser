@@ -307,30 +307,56 @@ test("a move the user plays still gets the full interactive profile", async () =
 	}
 });
 
-test("the review starts each search before animating the move", async () => {
-	// The playback beat used to run to completion before the engine was asked
-	// anything, so its delay was added to every ply of the game rather than
-	// spent while the engine was already working.
-	const engine = new FakeEngine({ latencyMs: 2 });
-	const session = createSession({ engine, depth: 12, reviewDepth: 12, multiPV: 2, playbackDelayMs: 20 });
+test("the review searches several positions at once", async () => {
+	// Stockfish's own threads need SharedArrayBuffer, which an extension page
+	// does not get. The parallelism therefore comes from several single-threaded
+	// engines working on different positions at the same time.
+	const session = createSession({
+		engine: new FakeEngine({ latencyMs: 5 }),
+		depth: 12,
+		reviewDepth: 12,
+		multiPV: 2,
+		playbackDelayMs: 0,
+		poolSize: 4,
+	});
 	loadPgnInto(session);
-
-	const observed = [];
-	engine.onAnalyze = ({ fen }) => {
-		observed.push({ fen, plyOnBoard: session.state.currentPly });
-	};
 
 	await session.analysisController.scanMainlineClassifications();
 	await session.settle();
 
-	const timeline = session.state.timelineFens;
-	// A search whose position is further along than the board is one that was
-	// issued before the move was played on screen.
-	const startedEarly = observed.filter((entry) => timeline.indexOf(entry.fen) > entry.plyOnBoard);
-	assert.equal(
-		startedEarly.length,
-		session.state.lineMoves.length,
-		`every ply's search should begin before its animation; got ${startedEarly.length}`,
+	assert.ok(session.poolStats.searches > 0, "the pool should have done the searching");
+	assert.ok(
+		session.poolStats.maxInFlight > 1,
+		`expected overlapping searches, peak concurrency was ${session.poolStats.maxInFlight}`,
 	);
-	assert.ok(session.renders.board > 0, "the board still animates during the review");
+	assert.equal(session.poolStats.inFlight, 0, "every search should have finished or been cancelled");
+	assert.ok(
+		session.state.moveClassifications.every(Boolean),
+		"every move is still classified when the work is spread out",
+	);
+});
+
+test("the review still walks the board in order while engines run ahead", async () => {
+	const seenPlies = [];
+	const session = createSession({
+		engine: new FakeEngine({ latencyMs: 2 }),
+		depth: 12,
+		reviewDepth: 12,
+		multiPV: 2,
+		playbackDelayMs: 1,
+		poolSize: 3,
+	});
+	loadPgnInto(session);
+
+	const originalRenderBoard = session.renders;
+	const scan = session.analysisController.scanMainlineClassifications();
+	const watcher = setInterval(() => seenPlies.push(session.state.currentPly), 1);
+	await scan;
+	clearInterval(watcher);
+	await session.settle();
+
+	// The board never jumps backwards during the review.
+	const forwardOnly = seenPlies.every((ply, index) => index === 0 || ply >= seenPlies[index - 1]);
+	assert.ok(forwardOnly, `board moved backwards during the review: ${seenPlies.join(",")}`);
+	assert.ok(originalRenderBoard.board > 0, "the board still animates during the review");
 });
