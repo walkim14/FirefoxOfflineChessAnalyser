@@ -12,7 +12,10 @@
 [![Tests](https://img.shields.io/badge/tests-node%3Atest-6c8ebf?style=flat-square)](#testing)
 [![License](https://img.shields.io/badge/license-ISC-8a8f98?style=flat-square)](#license)
 
-<img src="docs/screenshot.png" alt="The analyzer reviewing a game: board with the best-move arrow and evaluation bar, and a side panel with import, theme, analysis settings, the trap finder and move quality." width="900" />
+<a href="docs/screenshot.png"><img src="docs/screenshot.png" alt="The analyzer reviewing a game: board with the best-move arrow and evaluation bar, and a side panel with import, theme, analysis settings, the trap finder and move quality." width="880" /></a>
+
+<sub>A game under review — the played move graded, the arrow showing what should have been played instead.<br />
+Screenshots are rendered by <code>tools/snapshot.mjs</code> against a stubbed engine and explorer, so the numbers in them are illustrative.</sub>
 
 </div>
 
@@ -279,6 +282,15 @@ That is the whole design, and it is why no scraping is involved. One explorer re
 move distribution over millions of games at a chosen rating band and time control, so a search costs a handful
 of requests rather than a download of anybody's game archive.
 
+<div align="center">
+
+<a href="docs/trap-finder.png"><img src="docs/trap-finder.png" alt="The trap finder panel with two candidate moves, each showing how often opponents walk into it, the expected gain per game, and a breakdown of every reply with the ones that lose highlighted." width="430" /></a>
+
+<sub>Every candidate reports how often opponents walk into it, what it gains per game,<br />
+and which replies throw points away — with what the trapping side actually scored after each.</sub>
+
+</div>
+
 For the position on the board, the finder:
 
 1. asks the explorer which moves are actually played here, and takes the most common as candidates;
@@ -432,7 +444,7 @@ These run against the real engine.
 | `node tools/bench-scan.mjs` | Review speed, per move and per game |
 | `node tools/bench-accuracy.mjs` | What a shallower review costs in labels, scored against a deep one |
 | `node tools/bench-pool.mjs` | Pool scaling across engine counts |
-| `node tools/snapshot.mjs out.png` | Renders the real page to a PNG for looking at UI changes (headless Edge) |
+| `node tools/snapshot.mjs out.png` | Renders the real page to a PNG for looking at UI changes (headless Edge). `--traps` runs a trap search against a stubbed explorer so the panel has results in it; `--clip <selector>` with `--width` / `--window-size` frames a single panel |
 | `node tools/probe/run-probe.mjs` | Loads the extension in real Firefox and reports what the page can actually do — threading, `SharedArrayBuffer`. It swaps the manifest while it runs and restores it afterwards |
 
 ---

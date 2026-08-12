@@ -1,6 +1,8 @@
 // Renders the real analyzer page to a PNG so UI changes can be looked at.
 //
-//   node tools/snapshot.mjs <out.png> [--mode cp|ep] [--force-tooltip] [--clip selector]
+//   node tools/snapshot.mjs <out.png> [--mode cp|ep] [--traps] [--force-tooltip]
+//                                     [--clip selector] [--width px] [--zoom n]
+//                                     [--height css] [--window-size WxH]
 //
 // Boots app/analyzer.html in jsdom against a fake engine, plays a short game so
 // the panels have content, then serialises the live DOM next to the real
@@ -122,6 +124,14 @@ const outPath = resolve(args[0] || join(root, "snapshot.png"));
 const mode = args.includes("--mode") ? args[args.indexOf("--mode") + 1] : "cp";
 const forceTooltip = args.includes("--force-tooltip");
 const clip = args.includes("--clip") ? args[args.indexOf("--clip") + 1] : null;
+// A clipped shot is as tall as whatever it clipped; the defaults fit a settings
+// row or a tooltip, so anything longer needs its own frame.
+const clipWidth = args.includes("--width") ? Number(args[args.indexOf("--width") + 1]) : 420;
+const windowSize = args.includes("--window-size")
+	? args[args.indexOf("--window-size") + 1]
+	: clip
+		? "560,900"
+		: "1500,1180";
 
 const html = readFileSync(join(appDir, "analyzer.html"), "utf8");
 const dom = new JSDOM(html, { url: "https://example.invalid/analyzer.html", pretendToBeVisual: true });
@@ -270,7 +280,7 @@ if (clip) {
 	const height = args.includes("--height") ? args[args.indexOf("--height") + 1] : "auto";
 	holder.style.cssText = [
 		"padding:24px",
-		"width:420px",
+		`width:${clipWidth}px`,
 		`height:${height}`,
 		"display:flex",
 		"gap:28px",
@@ -311,7 +321,7 @@ try {
 			"--disable-gpu",
 			"--hide-scrollbars",
 			`--screenshot=${outPath}`,
-			`--window-size=${clip ? "560,900" : "1500,1180"}`,
+			`--window-size=${windowSize}`,
 			previewPath,
 		],
 		{ stdio: "ignore" },
