@@ -1,18 +1,12 @@
 /**
  * Renders trap search results.
  *
- * Every string that reaches this module has been through the network, so
- * everything interpolated into markup is escaped.
+ * Every string that reaches this module has been through the network, so it is
+ * built into the panel as an element or a text node rather than as markup —
+ * see `dom.mjs`.
  */
 
-function escapeHtml(value) {
-	return String(value ?? "")
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#39;");
-}
+import { el, replaceChildren } from "./dom.mjs";
 
 function percent(value, digits = 0) {
 	return `${(value * 100).toFixed(digits)}%`;
@@ -49,70 +43,89 @@ function payoffTier(expectedGain) {
 
 function renderReply(reply) {
 	const empirical = reply.heroEmpiricalScore === null
-		? ""
-		: `<span class="trap-reply-empirical" title="How the side setting the trap has actually scored after this reply">scored ${percent(reply.heroEmpiricalScore)}</span>`;
+		? null
+		: el("span", {
+			class: "trap-reply-empirical",
+			title: "How the side setting the trap has actually scored after this reply",
+			text: `scored ${percent(reply.heroEmpiricalScore)}`,
+		});
 
 	if (!reply.isTrapped) {
-		return `
-			<li class="trap-reply trap-reply-safe">
-				<span class="trap-reply-move">${escapeHtml(reply.san)}</span>
-				<span class="trap-reply-share">${percent(reply.share)}</span>
-				<span class="trap-reply-note">holds</span>
-				${empirical}
-			</li>
-		`;
+		return el("li", { class: "trap-reply trap-reply-safe" }, [
+			el("span", { class: "trap-reply-move", text: reply.san }),
+			el("span", { class: "trap-reply-share", text: percent(reply.share) }),
+			el("span", { class: "trap-reply-note", text: "holds" }),
+			empirical,
+		]);
 	}
 
 	const punish = reply.refutationSan
-		? `<span class="trap-reply-punish">punish with <strong>${escapeHtml(reply.refutationSan)}</strong></span>`
-		: "";
+		? el("span", { class: "trap-reply-punish" }, [
+			"punish with ",
+			el("strong", { text: reply.refutationSan }),
+		])
+		: null;
 
-	return `
-		<li class="trap-reply trap-reply-trapped">
-			<span class="trap-reply-move">${escapeHtml(reply.san)}</span>
-			<span class="trap-reply-share">${percent(reply.share)}</span>
-			<span class="trap-reply-loss" title="Expected score the reply throws away">−${percent(reply.epLoss, 1)}</span>
-			${punish}
-			${empirical}
-		</li>
-	`;
+	return el("li", { class: "trap-reply trap-reply-trapped" }, [
+		el("span", { class: "trap-reply-move", text: reply.san }),
+		el("span", { class: "trap-reply-share", text: percent(reply.share) }),
+		el("span", {
+			class: "trap-reply-loss",
+			title: "Expected score the reply throws away",
+			text: `−${percent(reply.epLoss, 1)}`,
+		}),
+		punish,
+		empirical,
+	]);
 }
 
-function renderTrap(trap, index) {
+function renderStat(value, label) {
+	return el("div", { class: "trap-stat" }, [
+		el("span", { class: "trap-stat-value", text: value }),
+		el("span", { class: "trap-stat-label", text: label }),
+	]);
+}
+
+function renderTrap(trap, index, onPlayMove) {
 	const tier = payoffTier(trap.expectedGain);
 	const opening = trap.opening?.name
-		? `<span class="trap-opening">${escapeHtml([trap.opening.eco, trap.opening.name].filter(Boolean).join(" "))}</span>`
-		: "";
+		? el("span", {
+			class: "trap-opening",
+			text: [trap.opening.eco, trap.opening.name].filter(Boolean).join(" "),
+		})
+		: null;
 	const soundness = trap.heroEpLoss <= 0.005
 		? "engine's top choice"
 		: `costs ${percent(trap.heroEpLoss, 1)} against the best reply`;
-	const empirical = trap.heroEmpiricalScoreWhenTrapped === null
-		? ""
-		: `<div class="trap-stat"><span class="trap-stat-value">${percent(trap.heroEmpiricalScoreWhenTrapped)}</span><span class="trap-stat-label">actual score when they fall in</span></div>`;
 
-	return `
-		<li class="trap-card ${tier.className}" data-trap-index="${index}">
-			<div class="trap-head">
-				<button class="trap-move" type="button" data-trap-action="play" data-trap-index="${index}" title="Play this move on the board">${escapeHtml(trap.san)}</button>
-				<span class="trap-tier">${tier.label}</span>
-				<span class="trap-games">${games(trap.games)}</span>
-				${opening}
-			</div>
-			<div class="trap-stats">
-				<div class="trap-stat">
-					<span class="trap-stat-value">${percent(trap.trapShare)}</span>
-					<span class="trap-stat-label">walk into it</span>
-				</div>
-				<div class="trap-stat">
-					<span class="trap-stat-value">+${percent(trap.expectedGain, 1)}</span>
-					<span class="trap-stat-label">expected gain per game</span>
-				</div>
-				${empirical}
-			</div>
-			<div class="trap-soundness">Your move: ${escapeHtml(soundness)}.</div>
-			<ul class="trap-replies">${trap.replies.map(renderReply).join("")}</ul>
-		</li>
-	`;
+	const moveButton = el("button", {
+		class: "trap-move",
+		type: "button",
+		title: "Play this move on the board",
+		dataset: { trapAction: "play", trapIndex: String(index) },
+		text: trap.san,
+	});
+	if (typeof onPlayMove === "function") {
+		moveButton.addEventListener("click", () => onPlayMove(trap));
+	}
+
+	return el("li", { class: `trap-card ${tier.className}`, dataset: { trapIndex: String(index) } }, [
+		el("div", { class: "trap-head" }, [
+			moveButton,
+			el("span", { class: "trap-tier", text: tier.label }),
+			el("span", { class: "trap-games", text: games(trap.games) }),
+			opening,
+		]),
+		el("div", { class: "trap-stats" }, [
+			renderStat(percent(trap.trapShare), "walk into it"),
+			renderStat(`+${percent(trap.expectedGain, 1)}`, "expected gain per game"),
+			trap.heroEmpiricalScoreWhenTrapped === null
+				? null
+				: renderStat(percent(trap.heroEmpiricalScoreWhenTrapped), "actual score when they fall in"),
+		]),
+		el("div", { class: "trap-soundness", text: `Your move: ${soundness}.` }),
+		el("ul", { class: "trap-replies" }, trap.replies.map(renderReply)),
+	]);
 }
 
 /** Explains an empty result, which is a real answer and not a failure. */
@@ -122,13 +135,33 @@ function renderEmpty(result) {
 		const why = !trap.isSound
 			? `gives up ${percent(trap.heroEpLoss, 1)} against the best reply`
 			: `only ${percent(trap.trapShare)} of replies go wrong`;
-		return `<li class="line-item">${escapeHtml(trap.san)} — ${escapeHtml(why)}</li>`;
+		return el("li", { class: "line-item", text: `${trap.san} — ${why}` });
 	});
 
-	return `
-		<p class="trap-empty">No trap here: at this rating the opponent pool answers this position well.</p>
-		${reasons.length ? `<p class="trap-empty-sub">Closest candidates:</p><ul class="trap-near-misses">${reasons.join("")}</ul>` : ""}
-	`;
+	return [
+		el("p", {
+			class: "trap-empty",
+			text: "No trap here: at this rating the opponent pool answers this position well.",
+		}),
+		reasons.length ? el("p", { class: "trap-empty-sub", text: "Closest candidates:" }) : null,
+		reasons.length ? el("ul", { class: "trap-near-misses" }, reasons) : null,
+	];
+}
+
+function renderWarning(stoppedEarly) {
+	if (stoppedEarly === "rate-limited") {
+		return el("p", {
+			class: "trap-warning",
+			text: "Lichess asked for a pause, so the search stopped early. What is shown is complete for the moves it reached; re-running in a minute picks up from the cache.",
+		});
+	}
+	if (stoppedEarly === "budget") {
+		return el("p", {
+			class: "trap-warning",
+			text: "Stopped at the request budget. Raise it in settings to look at more candidate moves.",
+		});
+	}
+	return null;
 }
 
 export function renderTrapResults(container, result, { onPlayMove } = {}) {
@@ -137,7 +170,10 @@ export function renderTrapResults(container, result, { onPlayMove } = {}) {
 	}
 
 	if (!result) {
-		container.innerHTML = "<p class='trap-empty'>Search from the position on the board to see which moves the opponents you face tend to answer badly.</p>";
+		replaceChildren(container, el("p", {
+			class: "trap-empty",
+			text: "Search from the position on the board to see which moves the opponents you face tend to answer badly.",
+		}));
 		return;
 	}
 
@@ -148,32 +184,15 @@ export function renderTrapResults(container, result, { onPlayMove } = {}) {
 		`${result.requestsUsed} explorer ${result.requestsUsed === 1 ? "request" : "requests"}`,
 	].join(" · ");
 
-	const warning = result.stoppedEarly === "rate-limited"
-		? "<p class='trap-warning'>Lichess asked for a pause, so the search stopped early. What is shown is complete for the moves it reached; re-running in a minute picks up from the cache.</p>"
-		: result.stoppedEarly === "budget"
-			? "<p class='trap-warning'>Stopped at the request budget. Raise it in settings to look at more candidate moves.</p>"
-			: "";
-
 	const body = result.traps.length
-		? `<ol class="trap-list">${result.traps.map(renderTrap).join("")}</ol>`
+		? el("ol", { class: "trap-list" }, result.traps.map((trap, index) => renderTrap(trap, index, onPlayMove)))
 		: renderEmpty(result);
 
-	container.innerHTML = `
-		<div class="trap-source">${escapeHtml(sourceNote)}</div>
-		${warning}
-		${body}
-	`;
-
-	if (typeof onPlayMove === "function") {
-		container.querySelectorAll("[data-trap-action='play']").forEach((button) => {
-			button.addEventListener("click", () => {
-				const trap = result.traps[Number(button.dataset.trapIndex)];
-				if (trap) {
-					onPlayMove(trap);
-				}
-			});
-		});
-	}
+	replaceChildren(container, [
+		el("div", { class: "trap-source", text: sourceNote }),
+		renderWarning(result.stoppedEarly),
+		body,
+	]);
 }
 
 export function renderTrapStatus(element, message, tone = "info") {

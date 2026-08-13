@@ -1,15 +1,4 @@
-function escapeHtml(value) {
-	return String(value ?? "").replace(/[&<>"']/g, (character) => {
-		const replacements = {
-			"&": "&amp;",
-			"<": "&lt;",
-			">": "&gt;",
-			'"': "&quot;",
-			"'": "&#39;",
-		};
-		return replacements[character] || character;
-	});
-}
+import { el, replaceChildren } from "./dom.mjs";
 
 export function classificationSlug(label) {
 	return String(label || "unknown").toLowerCase().replace(/\s+/g, "-");
@@ -64,22 +53,32 @@ export function classificationHelpText(label) {
 }
 
 export function renderHelpBubble(label, helpText) {
-	const safeHelp = escapeHtml(helpText);
-	return `<span class="help-bubble" tabindex="0" role="button" aria-label="${escapeHtml(label)} help"><span class="help-bubble-mark">?</span><span class="help-tooltip" role="tooltip">${safeHelp}</span></span>`;
+	return el("span", { class: "help-bubble", tabindex: "0", role: "button", "aria-label": `${label} help` }, [
+		el("span", { class: "help-bubble-mark", text: "?" }),
+		el("span", { class: "help-tooltip", role: "tooltip", text: helpText }),
+	]);
 }
 
 export function updateClassificationView(refs, result, classIcons) {
 	if (!result) {
 		refs.classificationPill.className = "pill neutral";
 		refs.classificationPill.textContent = "No move classified yet";
-		refs.classificationMeta.innerHTML = "";
+		replaceChildren(refs.classificationMeta);
 		return;
 	}
 
 	const labelClass = result.label.toLowerCase().replace(/\s+/g, "-");
 	refs.classificationPill.className = `pill ${labelClass}`;
 	const icon = classIcons[labelClass] || "•";
-	refs.classificationPill.innerHTML = `<span class="pill-icon">${icon}</span> ${result.label} ${renderHelpBubble(result.label, classificationHelpText(result.label))} <span class="pill-ep">EP loss ${(result.epLoss * 100).toFixed(1)}%</span>`;
+	// The pill lays out as inline text, so the spaces between its parts are
+	// what keeps the label off the icon and the bubble.
+	replaceChildren(refs.classificationPill, [
+		el("span", { class: "pill-icon", text: icon }),
+		` ${result.label} `,
+		renderHelpBubble(result.label, classificationHelpText(result.label)),
+		" ",
+		el("span", { class: "pill-ep", text: `EP loss ${(result.epLoss * 100).toFixed(1)}%` }),
+	]);
 
 	const bestCp = (result.bestCpWhite / 100).toFixed(2);
 	const playedCp = (result.playedCpWhite / 100).toFixed(2);
@@ -94,26 +93,23 @@ export function updateClassificationView(refs, result, classIcons) {
 		rows.push(note);
 	}
 
-	refs.classificationMeta.innerHTML = rows
-		.map((row) => `<div class="line-item">${escapeHtml(row)}</div>`)
-		.join("");
+	replaceChildren(refs.classificationMeta, rows.map((row) => el("div", { class: "line-item", text: row })));
 }
 
 export function updateEngineLinesView(refs, analysis, expectedWhitePercent) {
 	if (!analysis || !analysis.lines || analysis.lines.length === 0) {
-		refs.engineLines.innerHTML = analysis?.terminal
-			? `<div class='line-item'>Game over: ${escapeHtml(analysis.terminal)}.</div>`
-			: "<div class='line-item'>No line yet.</div>";
+		replaceChildren(refs.engineLines, el("div", {
+			class: "line-item",
+			text: analysis?.terminal ? `Game over: ${analysis.terminal}.` : "No line yet.",
+		}));
 		return;
 	}
 
-	refs.engineLines.innerHTML = analysis.lines
-		.map((line) => {
-			const whiteWin = expectedWhitePercent(line.cpWhite).toFixed(1);
-			const head = `#${line.multipv} ${line.move} | eval ${line.evalText} | white win ${whiteWin}%`;
-			return `<div class="line-item">${escapeHtml(head)}<br>${escapeHtml(line.pv)}</div>`;
-		})
-		.join("");
+	replaceChildren(refs.engineLines, analysis.lines.map((line) => {
+		const whiteWin = expectedWhitePercent(line.cpWhite).toFixed(1);
+		const head = `#${line.multipv} ${line.move} | eval ${line.evalText} | white win ${whiteWin}%`;
+		return el("div", { class: "line-item" }, [head, el("br"), line.pv]);
+	}));
 }
 
 export function estimatedMoveAccuracy(classification, clamp) {
@@ -182,21 +178,25 @@ export function renderOverview({ refs, state, Chess, getTreeNode, classIcons, cl
 		bucket.labels.set(label, (bucket.labels.get(label) || 0) + 1);
 	}
 
-	// Player names come straight from PGN headers, so they are untrusted markup.
-	const whiteName = escapeHtml(state.players.whiteName || "White");
-	const blackName = escapeHtml(state.players.blackName || "Black");
+	// Player names come straight from PGN headers, so they are set as text.
+	const whiteName = state.players.whiteName || "White";
+	const blackName = state.players.blackName || "Black";
 
 	if (refs.overviewHeading) {
-		refs.overviewHeading.innerHTML =
-			`<span class="overview-eyebrow">Accuracy</span>${renderHelpBubble("Accuracy", ACCURACY_HELP)}`;
+		replaceChildren(refs.overviewHeading, [
+			el("span", { class: "overview-eyebrow", text: "Accuracy" }),
+			renderHelpBubble("Accuracy", ACCURACY_HELP),
+		]);
 	}
-	refs.overviewWhite.innerHTML = renderPlayerTile("white", whiteName, buckets.white);
-	refs.overviewBlack.innerHTML = renderPlayerTile("black", blackName, buckets.black);
+	replaceChildren(refs.overviewWhite, renderPlayerTile("white", whiteName, buckets.white));
+	replaceChildren(refs.overviewBlack, renderPlayerTile("black", blackName, buckets.black));
 
 	const allLabels = new Set([...buckets.white.labels.keys(), ...buckets.black.labels.keys()]);
 	if (allLabels.size === 0) {
-		refs.overviewBreakdown.innerHTML =
-			"<p class='overview-empty'>Load a game to see how each move was played.</p>";
+		replaceChildren(refs.overviewBreakdown, el("p", {
+			class: "overview-empty",
+			text: "Load a game to see how each move was played.",
+		}));
 		return;
 	}
 
@@ -229,25 +229,41 @@ export function renderOverview({ refs, state, Chess, getTreeNode, classIcons, cl
 		const b = buckets.black.labels.get(label) || 0;
 		const slug = classificationSlug(label);
 		const icon = classIcons[slug] || "•";
-		const help = renderHelpBubble(label, classificationHelpText(label));
 
-		return `<div class="overview-row ${slug}">
-			<span class="overview-label"><span class="overview-icon" aria-hidden="true">${icon}</span><span class="overview-label-text">${escapeHtml(label)}</span>${help}</span>
-			<span class="overview-tally white ${w === 0 ? "zero" : ""}">${w}</span>
-			<span class="overview-track white"><span class="overview-fill" style="inline-size:${(w / peak) * 100}%"></span></span>
-			<span class="overview-track black"><span class="overview-fill" style="inline-size:${(b / peak) * 100}%"></span></span>
-			<span class="overview-tally black ${b === 0 ? "zero" : ""}">${b}</span>
-		</div>`;
+		return el("div", { class: `overview-row ${slug}` }, [
+			el("span", { class: "overview-label" }, [
+				el("span", { class: "overview-icon", "aria-hidden": "true", text: icon }),
+				el("span", { class: "overview-label-text", text: label }),
+				renderHelpBubble(label, classificationHelpText(label)),
+			]),
+			renderTally("white", w),
+			renderTrack("white", w / peak),
+			renderTrack("black", b / peak),
+			renderTally("black", b),
+		]);
 	});
 
-	refs.overviewBreakdown.innerHTML = `
-		<div class="overview-eyebrow">Moves by quality</div>
-		<div class="overview-scale">
-			<span class="overview-scale-side white">${whiteName}</span>
-			<span class="overview-scale-side black">${blackName}</span>
-		</div>
-		<div class="overview-rows">${rows.join("")}</div>
-	`;
+	replaceChildren(refs.overviewBreakdown, [
+		el("div", { class: "overview-eyebrow", text: "Moves by quality" }),
+		el("div", { class: "overview-scale" }, [
+			el("span", { class: "overview-scale-side white", text: whiteName }),
+			el("span", { class: "overview-scale-side black", text: blackName }),
+		]),
+		el("div", { class: "overview-rows" }, rows),
+	]);
+}
+
+function renderTally(side, count) {
+	return el("span", {
+		class: `overview-tally ${side}${count === 0 ? " zero" : ""}`,
+		text: String(count),
+	});
+}
+
+function renderTrack(side, share) {
+	return el("span", { class: `overview-track ${side}` }, [
+		el("span", { class: "overview-fill", style: { "inline-size": `${share * 100}%` } }),
+	]);
 }
 
 export const SETTING_HELP = {
@@ -272,15 +288,18 @@ function renderPlayerTile(side, name, bucket) {
 	const shown = hasMoves ? accuracy.toFixed(1) : "—";
 	const moves = bucket.counted === 1 ? "1 move" : `${bucket.counted} moves`;
 
-	return `
-		<div class="overview-player ${side}">
-			<span class="overview-side-chip" aria-hidden="true"></span>
-			<span class="overview-name">${name}</span>
-			<span class="overview-acc"><span class="overview-acc-value">${shown}</span>${hasMoves ? '<span class="overview-acc-unit">%</span>' : ""}</span>
-			<span class="overview-meter"><span class="overview-meter-fill" style="inline-size:${hasMoves ? accuracy : 0}%"></span></span>
-			<span class="overview-count">${hasMoves ? moves : "not analysed yet"}</span>
-		</div>
-	`;
+	return el("div", { class: `overview-player ${side}` }, [
+		el("span", { class: "overview-side-chip", "aria-hidden": "true" }),
+		el("span", { class: "overview-name", text: name }),
+		el("span", { class: "overview-acc" }, [
+			el("span", { class: "overview-acc-value", text: shown }),
+			hasMoves ? el("span", { class: "overview-acc-unit", text: "%" }) : null,
+		]),
+		el("span", { class: "overview-meter" }, [
+			el("span", { class: "overview-meter-fill", style: { "inline-size": `${hasMoves ? accuracy : 0}%` } }),
+		]),
+		el("span", { class: "overview-count", text: hasMoves ? moves : "not analysed yet" }),
+	]);
 }
 
 export { ACCURACY_HELP };

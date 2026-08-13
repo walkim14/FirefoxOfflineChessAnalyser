@@ -1,15 +1,4 @@
-function escapeHtml(value) {
-	return String(value ?? "").replace(/[&<>"']/g, (character) => {
-		const replacements = {
-			"&": "&amp;",
-			"<": "&lt;",
-			">": "&gt;",
-			'"': "&quot;",
-			"'": "&#39;",
-		};
-		return replacements[character] || character;
-	});
-}
+import { el, frag } from "./dom.mjs";
 
 function moveNumberLabel(ply) {
 	return ply % 2 === 1 ? `${Math.ceil(ply / 2)}.` : `${Math.ceil(ply / 2)}...`;
@@ -81,7 +70,7 @@ export function getReferenceMainlineNodeIds(treeRootId, getTreeNode) {
 
 function renderChip({ node, cellRole, laneClass, currentNodeId, currentPathSet, classIcons }) {
 	if (!node) {
-		return `<div class="tree-ply-cell ${cellRole} empty"></div>`;
+		return el("div", { class: `tree-ply-cell ${cellRole} empty` });
 	}
 
 	const classes = ["tree-chip", cellRole, laneClass === "mainline" ? "mainline" : "variation"];
@@ -95,12 +84,6 @@ function renderChip({ node, cellRole, laneClass, currentNodeId, currentPathSet, 
 	const classification = node.classification?.label || "";
 	const slug = classification.toLowerCase().replace(/\s+/g, "-");
 	const icon = slug && classIcons ? classIcons[slug] : null;
-	const badge = icon
-		? `<span class="tree-chip-class ${escapeHtml(slug)}" aria-hidden="true">${escapeHtml(icon)}</span>`
-		: "";
-	const labelBadge = node.annotationLabel
-		? `<span class="tree-node-label">${escapeHtml(node.annotationLabel)}</span>`
-		: "";
 
 	const titleParts = [nodeLabel(node)];
 	if (classification) {
@@ -109,11 +92,19 @@ function renderChip({ node, cellRole, laneClass, currentNodeId, currentPathSet, 
 	if (node.annotationNote) {
 		titleParts.push(node.annotationNote);
 	}
-	const title = ` title="${escapeHtml(titleParts.join(" — "))}"`;
 
-	const move = `<span class="tree-chip-move">${escapeHtml(nodeLabel(node))}</span>`;
-	const chip = `<button type="button" class="${classes.join(" ")}" data-node-id="${node.id}" data-tree-action="jump-node"${title}>${badge}${move}${labelBadge}</button>`;
-	return `<div class="tree-ply-cell ${cellRole}">${chip}</div>`;
+	const chip = el("button", {
+		type: "button",
+		class: classes.join(" "),
+		dataset: { nodeId: String(node.id), treeAction: "jump-node" },
+		title: titleParts.join(" — "),
+	}, [
+		icon ? el("span", { class: `tree-chip-class ${slug}`, "aria-hidden": "true", text: icon }) : null,
+		el("span", { class: "tree-chip-move", text: nodeLabel(node) }),
+		node.annotationLabel ? el("span", { class: "tree-node-label", text: node.annotationLabel }) : null,
+	]);
+
+	return el("div", { class: `tree-ply-cell ${cellRole}` }, chip);
 }
 
 /**
@@ -141,10 +132,10 @@ function renderVariationBlock({
 	context,
 }) {
 	if (!variations.length) {
-		return "";
+		return null;
 	}
 
-	const { expandedParents, currentPathSet, currentNodeId, getTreeNode, classIcons } = context;
+	const { expandedParents, currentPathSet, getTreeNode } = context;
 	// A variation holding the current move is always shown: otherwise the move
 	// the user just played would be hidden behind a collapsed toggle.
 	const holdsCurrent = variations.some((child) => currentPathSet.has(child.id));
@@ -152,38 +143,55 @@ function renderVariationBlock({
 	const count = variations.length;
 	const countLabel = count === 1 ? "1 line" : `${count} lines`;
 
-	const toggle = `<button type="button" class="tree-var-toggle ${expanded ? "expanded" : ""}" data-parent-node-id="${parentNode.id}" data-tree-action="toggle-variations" aria-expanded="${expanded}" aria-label="${expanded ? "Collapse" : "Expand"} ${escapeHtml(countLabel)} after ${escapeHtml(nodeLabel(parentNode))}"><span class="tree-var-arrow" aria-hidden="true">${expanded ? "▾" : "▸"}</span><span class="tree-var-count">${escapeHtml(countLabel)}</span></button>`;
-	const annotate = `<button type="button" class="tree-annotation-button" data-node-id="${parentNode.id}" data-tree-action="edit-annotation" aria-label="Annotate ${escapeHtml(nodeLabel(parentNode))}">✎</button>`;
-	const head = `<div class="tree-variation-toggle-row depth-${depth}">${toggle}${annotate}</div>`;
+	const toggle = el("button", {
+		type: "button",
+		class: `tree-var-toggle ${expanded ? "expanded" : ""}`,
+		dataset: { parentNodeId: String(parentNode.id), treeAction: "toggle-variations" },
+		"aria-expanded": String(expanded),
+		"aria-label": `${expanded ? "Collapse" : "Expand"} ${countLabel} after ${nodeLabel(parentNode)}`,
+	}, [
+		el("span", { class: "tree-var-arrow", "aria-hidden": "true", text: expanded ? "▾" : "▸" }),
+		el("span", { class: "tree-var-count", text: countLabel }),
+	]);
 
-	if (!expanded) {
-		return `<div class="tree-sideline-row variation tree-depth-${depth}"><div class="tree-move-number"></div><div class="tree-sideline-span ${cellRole}">${head}</div></div>`;
-	}
+	const annotate = el("button", {
+		type: "button",
+		class: "tree-annotation-button",
+		dataset: { nodeId: String(parentNode.id), treeAction: "edit-annotation" },
+		"aria-label": `Annotate ${nodeLabel(parentNode)}`,
+		text: "✎",
+	});
 
-	const blocks = variations
-		.map((child) => renderLineBlock({
+	const head = el("div", { class: `tree-variation-toggle-row depth-${depth}` }, [toggle, annotate]);
+
+	const blocks = expanded
+		? el("div", { class: `tree-side-block variation depth-${depth}` }, variations.map((child) => renderLineBlock({
 			pathNodeIds: getPreferredPathNodeIds(child.id, getTreeNode),
 			startPly: parentPly + 1,
 			laneClass: "variation",
 			depth: depth + 1,
 			context,
-		}))
-		.join("");
+		})))
+		: null;
 
-	return `<div class="tree-sideline-row variation tree-depth-${depth}"><div class="tree-move-number"></div><div class="tree-sideline-span ${cellRole}">${head}<div class="tree-side-block variation depth-${depth}">${blocks}</div></div></div>`;
+	return el("div", { class: `tree-sideline-row variation tree-depth-${depth}` }, [
+		el("div", { class: "tree-move-number" }),
+		el("div", { class: `tree-sideline-span ${cellRole}` }, [head, blocks]),
+	]);
 }
 
 /**
  * Renders one continuous line as full-move rows, with each move's alternatives
- * emitted directly beneath the row that contains it.
+ * emitted directly beneath the row that contains it. Null when there is no
+ * line to draw.
  */
 export function renderLineBlock({ pathNodeIds, startPly, laneClass, depth = 0, context }) {
 	const { getTreeNode, currentNodeId, currentPathSet, classIcons } = context;
 	if (!pathNodeIds || pathNodeIds.length === 0) {
-		return "";
+		return null;
 	}
 
-	let html = `<div class="tree-branch-block ${laneClass} depth-${depth}">`;
+	const block = el("div", { class: `tree-branch-block ${laneClass} depth-${depth}` });
 
 	let index = 0;
 	while (index < pathNodeIds.length) {
@@ -210,25 +218,27 @@ export function renderLineBlock({ pathNodeIds, startPly, laneClass, depth = 0, c
 		const whiteVariations = variationChildren(whiteNode, whiteNextId, getTreeNode);
 		const blackVariations = variationChildren(blackNode, blackNextId, getTreeNode);
 
-		html += `
-			<div class="tree-fullmove-row ${laneClass} tree-depth-${depth}">
-				<div class="tree-move-number">${escapeHtml(moveNumberLabel(ply))}</div>
-				${renderChip({ node: whiteNode, cellRole: "white", laneClass, currentNodeId, currentPathSet, classIcons })}
-				${renderChip({ node: blackNode, cellRole: "black", laneClass, currentNodeId, currentPathSet, classIcons })}
-			</div>
-			${renderVariationBlock({ parentNode: whiteNode, variations: whiteVariations, parentPly: whitePly, cellRole: "white", depth, context })}
-			${renderVariationBlock({ parentNode: blackNode, variations: blackVariations, parentPly: blackPly, cellRole: "black", depth, context })}
-		`;
+		block.append(
+			el("div", { class: `tree-fullmove-row ${laneClass} tree-depth-${depth}` }, [
+				el("div", { class: "tree-move-number", text: moveNumberLabel(ply) }),
+				renderChip({ node: whiteNode, cellRole: "white", laneClass, currentNodeId, currentPathSet, classIcons }),
+				renderChip({ node: blackNode, cellRole: "black", laneClass, currentNodeId, currentPathSet, classIcons }),
+			]),
+			frag([
+				renderVariationBlock({ parentNode: whiteNode, variations: whiteVariations, parentPly: whitePly, cellRole: "white", depth, context }),
+				renderVariationBlock({ parentNode: blackNode, variations: blackVariations, parentPly: blackPly, cellRole: "black", depth, context }),
+			]),
+		);
 
 		index += consumed;
 	}
 
-	html += "</div>";
-	return html;
+	return block;
 }
 
 /**
- * Entry point: renders the reference line plus every reachable variation.
+ * Entry point: renders the reference line plus every reachable variation into
+ * a detached element the caller mounts.
  */
 export function renderMoveTree({
 	pathNodeIds,

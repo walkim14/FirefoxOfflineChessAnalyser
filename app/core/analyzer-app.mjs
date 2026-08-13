@@ -38,6 +38,7 @@ import {
 	REVIEW_PLAYBACK_DELAY_MS,
 	SCAN_PLAYBACK_DELAY_MS,
 } from "./constants.mjs";
+import { el, replaceChildren, svgEl } from "../ui/dom.mjs";
 import { getDomRefs } from "../ui/dom-refs.mjs";
 import { storageGet, storageSet } from "./browser-storage.mjs";
 import { getReferenceMainlineNodeIds, renderMoveTree } from "../ui/tree-renderer.mjs";
@@ -184,12 +185,12 @@ function renderMoveTreePanel() {
 		? state.mainlineNodeIds
 		: getReferenceMainlineNodeIds(state.treeRootId, getTreeNode);
 	if (referenceLineNodeIds.length <= 1) {
-		refs.treePath.innerHTML = "<div class='line-item'>No moves in tree yet.</div>";
-		refs.treeChildren.innerHTML = "";
+		replaceChildren(refs.treePath, el("div", { class: "line-item", text: "No moves in tree yet." }));
+		replaceChildren(refs.treeChildren);
 		return;
 	}
 
-	const treeHtml = renderMoveTree({
+	const tree = renderMoveTree({
 		// The root holds no move of its own, so the spine starts at ply 1.
 		pathNodeIds: referenceLineNodeIds.slice(1),
 		startPly: 1,
@@ -198,8 +199,11 @@ function renderMoveTreePanel() {
 		expandedParents: state.treeExpandedParents,
 		classIcons: CLASS_ICONS,
 	});
-	refs.treePath.innerHTML = `<div class="tree-branch-panel"><div class="tree-mainline-rail" aria-hidden="true"></div><div class="tree-rows">${treeHtml}</div></div>`;
-	refs.treeChildren.innerHTML = "";
+	replaceChildren(refs.treePath, el("div", { class: "tree-branch-panel" }, [
+		el("div", { class: "tree-mainline-rail", "aria-hidden": "true" }),
+		el("div", { class: "tree-rows" }, tree),
+	]));
+	replaceChildren(refs.treeChildren);
 
 	refs.treePath.querySelectorAll("button[data-tree-action='jump-node']").forEach((button) => {
 		button.addEventListener("click", () => {
@@ -458,7 +462,7 @@ function renderBoardOverlay() {
 	const bestArrowMove = bestMoveForDisplayedPly();
 
 	if (!bestArrowMove || bestArrowMove.length < 4) {
-		refs.boardOverlay.innerHTML = "";
+		replaceChildren(refs.boardOverlay);
 		refs.boardOverlay.removeAttribute("data-best-move");
 		return;
 	}
@@ -492,18 +496,21 @@ function renderBoardOverlay() {
 	const lineEndX = baseCenterX - (dx / length) * 2;
 	const lineEndY = baseCenterY - (dy / length) * 2;
 
-	refs.boardOverlay.innerHTML = `
-		<line
-			x1="${startX}"
-			y1="${startY}"
-			x2="${lineEndX}"
-			y2="${lineEndY}"
-			stroke="#f3c251"
-			stroke-width="9"
-			stroke-linecap="round"
-		></line>
-		<polygon points="${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}" fill="#f3c251"></polygon>
-	`;
+	replaceChildren(refs.boardOverlay, [
+		svgEl("line", {
+			x1: startX,
+			y1: startY,
+			x2: lineEndX,
+			y2: lineEndY,
+			stroke: "#f3c251",
+			"stroke-width": "9",
+			"stroke-linecap": "round",
+		}),
+		svgEl("polygon", {
+			points: `${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}`,
+			fill: "#f3c251",
+		}),
+	]);
 }
 
 function shortLabelForTag(label) {
@@ -1031,10 +1038,13 @@ function requestPromotionChoice(moverColor) {
 
 	return new Promise((resolve) => {
 		const color = moverColor === "b" ? "b" : "w";
-		refs.promotionChoices.innerHTML = PROMOTION_PIECES.map((piece) => {
-			const url = getPieceAssetUrl({ color, type: piece.code });
-			return `<button type="button" class="promotion-choice" data-piece="${piece.code}" title="${piece.name}" aria-label="${piece.name}"><img src="${url}" alt="${piece.name}" /></button>`;
-		}).join("");
+		replaceChildren(refs.promotionChoices, PROMOTION_PIECES.map((piece) => el("button", {
+			type: "button",
+			class: "promotion-choice",
+			"data-piece": piece.code,
+			title: piece.name,
+			"aria-label": piece.name,
+		}, el("img", { src: getPieceAssetUrl({ color, type: piece.code }), alt: piece.name }))));
 
 		const settle = (piece) => {
 			refs.promotionModal.classList.add("hidden");
@@ -1113,7 +1123,7 @@ function renderBoard() {
 	const shouldFlashSquares =
 		shouldAnimateMove && !state.scanInProgress && !state.isClassifying && !state.reviewAnimating;
 
-	refs.board.innerHTML = "";
+	replaceChildren(refs.board);
 	for (const square of squares) {
 		const fileIndex = square.charCodeAt(0) - "a".charCodeAt(0);
 		const rankNumber = Number(square[1]);
@@ -1130,18 +1140,26 @@ function renderBoard() {
 			if (shouldAnimateMove && movedTo === square) {
 				pieceClass += " move-pop move-slide";
 			}
-			let slideStyle = "";
+			const slide = {};
 			if (shouldAnimateMove && movedFrom && movedTo === square) {
 				const fromIdx = squareDisplayIndex(movedFrom);
 				const toIdx = squareDisplayIndex(movedTo);
-				const slideX = fromIdx.x - toIdx.x;
-				const slideY = fromIdx.y - toIdx.y;
-				slideStyle = ` style="--slide-x:${slideX};--slide-y:${slideY};"`;
+				slide["--slide-x"] = fromIdx.x - toIdx.x;
+				slide["--slide-y"] = fromIdx.y - toIdx.y;
 			}
-			button.innerHTML = `<img class="${pieceClass}"${slideStyle} src="${pieceImageUrl}" alt="${piece.color}${piece.type}" />`;
+
+			button.append(el("img", {
+				class: pieceClass,
+				style: slide,
+				src: pieceImageUrl,
+				alt: `${piece.color}${piece.type}`,
+			}));
 
 			if (classificationForPly && movedTo === square) {
-				button.innerHTML += `<span class="move-tag ${classificationSlug}">${shortLabelForTag(classificationForPly.label)}</span>`;
+				button.append(el("span", {
+					class: `move-tag ${classificationSlug}`,
+					text: shortLabelForTag(classificationForPly.label),
+				}));
 			}
 		} else {
 			button.textContent = "";
@@ -1264,7 +1282,7 @@ function renderSettingHelp() {
 		const key = slot.getAttribute("data-help").replace(/-/g, "");
 		const help = SETTING_HELP[key];
 		if (help) {
-			slot.innerHTML = renderHelpBubble(slot.closest("label")?.textContent?.trim() || key, help);
+			replaceChildren(slot, renderHelpBubble(slot.closest("label")?.textContent?.trim() || key, help));
 		}
 	}
 }
